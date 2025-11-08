@@ -39,7 +39,23 @@ export function activate(context: vscode.ExtensionContext) {
         return testScopeInfo || { assembly: '', className: '', filter: '' }; // Return full object
     });
 
-    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput);
+    // Register individual property commands for launch.json flexibility
+    const getFilter = vscode.commands.registerCommand('csharp-test-filter.getFilter', async () => {
+        const testScopeInfo = await getTestScope(false);
+        return testScopeInfo?.filter || '';
+    });
+
+    const getClassName = vscode.commands.registerCommand('csharp-test-filter.getClassName', async () => {
+        const testScopeInfo = await getTestScope(false);
+        return testScopeInfo?.className || '';
+    });
+
+    const getMethodName = vscode.commands.registerCommand('csharp-test-filter.getMethodName', async () => {
+        const testScopeInfo = await getTestScope(false);
+        return testScopeInfo?.methodName || '';
+    });
+
+    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput, getFilter, getClassName, getMethodName);
 }
 
 async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo | undefined> {

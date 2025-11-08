@@ -11,7 +11,7 @@
         "exec",
         "${workspaceFolder}/SampleTests/bin/Debug/net10.0/SampleTests.dll",
         "--treenode-filter",
-        "${command:csharp-test-filter.getTestFilterForInput.filter}",
+        "${command:csharp-test-filter.getFilter}",
         "--no-build"
       ],
       "cwd": "${workspaceFolder}",

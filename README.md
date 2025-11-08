@@ -28,7 +28,7 @@ A VS Code extension that automatically detects the C# test scope (assembly, clas
 
 The extension can automatically provide the test filter to your debug configuration. Here's how to set it up:
 
-#### Option 1: Using Input Variable with Auto-Detection
+#### Option 1: Using Auto-Detection with Individual Commands
 
 ```json
 {
@@ -44,7 +44,7 @@ The extension can automatically provide the test filter to your debug configurat
         "exec",
         "${workspaceFolder}/tests/YourProject.Tests/bin/Debug/net8.0/YourProject.Tests.dll",
         "--treenode-filter",
-        "/*/*/${command:csharp-test-filter.getTestFilterForInput}"
+        "${command:csharp-test-filter.getFilter}"
       ],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole"
@@ -52,6 +52,11 @@ The extension can automatically provide the test filter to your debug configurat
   ]
 }
 ```
+
+**Available Commands:**
+- `${command:csharp-test-filter.getFilter}` - Complete TUnit filter path
+- `${command:csharp-test-filter.getClassName}` - Just the class name
+- `${command:csharp-test-filter.getMethodName}` - Just the method name
 
 #### Option 2: Using Prompt with Manual Entry
 
