@@ -10,13 +10,11 @@ All notable changes to this project will be documented in this file.
   method
 - Automatic fallback to last test: When cursor is not on a test method, the
   extension automatically uses the last selected test filter
-- Improved activation: Extension activates immediately on startup for better
-  reliability
 
 ### Changed
 
-- Extension now activates on startup (`"*"` activation event) instead of
-  waiting for C# files
+- Restored standard activation events (C# language and .csproj files) for
+  better performance
 
 ## [1.0.2] - 2025-11-08
 

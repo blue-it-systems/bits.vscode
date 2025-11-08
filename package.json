@@ -27,7 +27,8 @@
     "dotnet"
   ],
   "activationEvents": [
-    "*"
+    "onLanguage:csharp",
+    "workspaceContains:**/*.csproj"
   ],
   "main": "./out/extension.js",
   "contributes": {
