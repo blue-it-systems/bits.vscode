@@ -2,7 +2,7 @@
   "name": "csharp-test-filter",
   "displayName": "C# Test Filter Helper",
   "description": "Automatically detect C# test scope (assembly/class/method) for TUnit debugging",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "bits",
   "icon": "images/icon.png",
   "author": {
