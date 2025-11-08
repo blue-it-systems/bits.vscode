@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   method
 - Automatic fallback to last test: When cursor is not on a test method, the
   extension automatically uses the last selected test filter
+- Auto-breakpoint on method entry: Automatically adds a breakpoint at the
+  start of a test method if no breakpoints are found in that method
 
 ### Changed
 
