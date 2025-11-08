@@ -87,8 +87,11 @@ async function analyzeTestScope(document: vscode.TextDocument, position: vscode.
         return undefined;
     }
 
-    // Build the test filter based on TUnit format: Assembly/Namespace.ClassName/MethodName
-    let filter = `*/${className}`;
+    // Extract namespace from the file
+    const namespace = extractNamespace(lines);
+
+    // Build the test filter based on TUnit format: /AssemblyName/Namespace/ClassName/MethodName
+    let filter = `/*/${namespace || '*'}/${className}`;
     
     if (methodName) {
         filter += `/${methodName}`;
@@ -120,6 +123,17 @@ function extractAssemblyName(filePath: string): string {
     
     // Fallback to parent directory name
     return parts[parts.length - 2] || 'UnknownAssembly';
+}
+
+function extractNamespace(lines: string[]): string | undefined {
+    // Search for namespace declaration in the file
+    for (const line of lines) {
+        const namespaceMatch = line.trim().match(/namespace\s+([\w.]+)/);
+        if (namespaceMatch) {
+            return namespaceMatch[1];
+        }
+    }
+    return undefined;
 }
 
 function findClassName(lines: string[], currentLine: number): string | undefined {

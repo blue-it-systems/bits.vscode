@@ -23,7 +23,7 @@ This workspace is automatically loaded when you press F5 to debug the extension.
    Assembly: SampleTests
    Class: CalculatorTests
    Method: Add_ShouldReturnCorrectSum
-   Filter: */CalculatorTests/Add_ShouldReturnCorrectSum
+   Filter: /*/SampleTests/CalculatorTests/Add_ShouldReturnCorrectSum
    ```
 
 ### 2. Copy Test Filter
@@ -60,4 +60,5 @@ test-workspace/
 
 - This workspace uses TUnit as the test framework
 - The extension auto-detects test scope from cursor position
-- No method in scope? The filter will be `*/ClassName/*`
+- Filter format: `/AssemblyName/Namespace/ClassName/MethodName` (TUnit compatible)
+- No method in scope? The filter will be `/*/Namespace/ClassName/*`

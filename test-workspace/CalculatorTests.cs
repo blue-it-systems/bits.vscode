@@ -1,5 +1,3 @@
-using TUnit.Core;
-
 namespace SampleTests;
 
 public class CalculatorTests
@@ -14,7 +12,7 @@ public class CalculatorTests
         var result = calculator.Add(5, 3);
         
         // Assert
-        Assert.Equal(8, result);
+        await Assert.That(result).IsEqualTo(8);
     }
 
     [Test]
@@ -27,7 +25,7 @@ public class CalculatorTests
         var result = calculator.Subtract(10, 4);
         
         // Assert
-        Assert.Equal(6, result);
+        await Assert.That(result).IsEqualTo(6);
     }
 
     [Test]
@@ -40,7 +38,7 @@ public class CalculatorTests
         var result = calculator.Multiply(6, 7);
         
         // Assert
-        Assert.Equal(42, result);
+        await Assert.That(result).IsEqualTo(42);
     }
 
     [Test]
@@ -53,7 +51,7 @@ public class CalculatorTests
         var result = calculator.Divide(20, 4);
         
         // Assert
-        Assert.Equal(5, result);
+        await Assert.That(result).IsEqualTo(5);
     }
 }
 
