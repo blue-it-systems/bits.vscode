@@ -62,12 +62,6 @@ export function activate(context: vscode.ExtensionContext) {
         const filter = testScopeInfo?.filter || '';
         console.log(`[C# Test Filter] Generated filter: ${filter}`);
         console.log(`[C# Test Filter] Full scope:`, testScopeInfo);
-        
-        // Auto-set breakpoint if method is detected and no breakpoints exist
-        if (testScopeInfo?.methodName) {
-            await ensureBreakpointAtMethodEntry(testScopeInfo);
-        }
-        
         // Also show in output channel for debugging
         const outputChannel = vscode.window.createOutputChannel('C# Test Filter');
         outputChannel.appendLine(`=== Test Filter Debug Info ===`);
@@ -157,67 +151,6 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
         }
         
         return scopeInfo;
-    }
-}
-
-async function ensureBreakpointAtMethodEntry(testScopeInfo: TestScopeInfo): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !testScopeInfo.methodName) {
-        return;
-    }
-
-    const document = editor.document;
-    
-    // Get all symbols to find the method range
-    const symbols = await getDocumentSymbols(document);
-    if (!symbols || symbols.length === 0) {
-        return;
-    }
-
-    // Find the method symbol
-    const classSymbol = findClassByName(symbols, testScopeInfo.className);
-    if (!classSymbol) {
-        return;
-    }
-
-    const methodSymbol = findMethodByName(classSymbol, testScopeInfo.methodName);
-    if (!methodSymbol) {
-        return;
-    }
-
-    // Check if there are any breakpoints in the method range
-    const methodRange = methodSymbol.range;
-    const breakpoints = vscode.debug.breakpoints.filter(bp => {
-        if (bp instanceof vscode.SourceBreakpoint) {
-            return bp.location.uri.toString() === document.uri.toString() &&
-                   bp.location.range.start.line >= methodRange.start.line &&
-                   bp.location.range.end.line <= methodRange.end.line;
-        }
-        return false;
-    });
-
-    if (breakpoints.length === 0) {
-        // No breakpoints found - add one at the first line of the method body
-        // Skip the method declaration line and find the first code line
-        let firstCodeLine = methodRange.start.line + 1;
-        
-        // Try to find the opening brace and set breakpoint on next line
-        for (let line = methodRange.start.line; line <= methodRange.end.line; line++) {
-            const lineText = document.lineAt(line).text;
-            if (lineText.includes('{')) {
-                firstCodeLine = line + 1;
-                break;
-            }
-        }
-
-        const breakpoint = new vscode.SourceBreakpoint(
-            new vscode.Location(document.uri, new vscode.Position(firstCodeLine, 0))
-        );
-        
-        vscode.debug.addBreakpoints([breakpoint]);
-        console.log(`[C# Test Filter] Auto-added breakpoint at line ${firstCodeLine + 1} in method ${testScopeInfo.methodName}`);
-    } else {
-        console.log(`[C# Test Filter] Breakpoint(s) already exist in method ${testScopeInfo.methodName}`);
     }
 }
 
@@ -331,36 +264,6 @@ function findMethodAtPosition(classSymbol: vscode.DocumentSymbol, position: vsco
     for (const child of classSymbol.children) {
         // Check if this is a method and contains the position
         if (child.kind === vscode.SymbolKind.Method && child.range.contains(position)) {
-            return child;
-        }
-    }
-    
-    return undefined;
-}
-
-function findClassByName(symbols: vscode.DocumentSymbol[], className: string): vscode.DocumentSymbol | undefined {
-    for (const symbol of symbols) {
-        if (symbol.kind === vscode.SymbolKind.Class && symbol.name === className) {
-            return symbol;
-        }
-        // Check children recursively (e.g., classes inside namespaces)
-        if (symbol.children && symbol.children.length > 0) {
-            const found = findClassByName(symbol.children, className);
-            if (found) {
-                return found;
-            }
-        }
-    }
-    return undefined;
-}
-
-function findMethodByName(classSymbol: vscode.DocumentSymbol, methodName: string): vscode.DocumentSymbol | undefined {
-    if (!classSymbol.children) {
-        return undefined;
-    }
-
-    for (const child of classSymbol.children) {
-        if (child.kind === vscode.SymbolKind.Method && child.name === methodName) {
             return child;
         }
     }

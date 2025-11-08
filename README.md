@@ -13,8 +13,6 @@ cursor position for seamless TUnit debugging in VS Code.
 - **Class & Method Level**: Run entire test classes or individual methods
 - **Last Test Memory**: Remembers your last selected test method and uses it
   automatically when cursor is not on a test
-- **Auto-Breakpoint**: Automatically sets a breakpoint at method entry if no
-  breakpoints exist in the selected test method
 - **Fallback Support**: Works even without C# Dev Kit installed
 
 ## Quick Start
