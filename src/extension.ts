@@ -7,6 +7,16 @@ interface TestScopeInfo {
     filter: string;
 }
 
+interface SymbolInfo {
+    name: string;
+    kind: vscode.SymbolKind;
+    range: vscode.Range;
+}
+
+// Cache for document symbols to avoid repeated requests
+const symbolCache = new Map<string, { symbols: vscode.DocumentSymbol[], timestamp: number }>();
+const CACHE_TTL = 5000; // 5 seconds
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('C# Test Filter Helper is now active');
 
@@ -42,7 +52,20 @@ export function activate(context: vscode.ExtensionContext) {
     // Register individual property commands for launch.json flexibility
     const getFilter = vscode.commands.registerCommand('csharp-test-filter.getFilter', async () => {
         const testScopeInfo = await getTestScope(false);
-        return testScopeInfo?.filter || '';
+        const filter = testScopeInfo?.filter || '';
+        console.log(`[C# Test Filter] Generated filter: ${filter}`);
+        console.log(`[C# Test Filter] Full scope:`, testScopeInfo);
+        // Also show in output channel for debugging
+        const outputChannel = vscode.window.createOutputChannel('C# Test Filter');
+        outputChannel.appendLine(`=== Test Filter Debug Info ===`);
+        outputChannel.appendLine(`Filter: ${filter}`);
+        outputChannel.appendLine(`Assembly: ${testScopeInfo?.assembly}`);
+        outputChannel.appendLine(`Namespace: ${testScopeInfo?.className ? 'extracted from file' : 'not found'}`);
+        outputChannel.appendLine(`Class: ${testScopeInfo?.className}`);
+        outputChannel.appendLine(`Method: ${testScopeInfo?.methodName || '(none - class level)'}`);
+        outputChannel.appendLine(`Detection: Language Server`);
+        outputChannel.show(true);
+        return filter;
     });
 
     const getClassName = vscode.commands.registerCommand('csharp-test-filter.getClassName', async () => {
@@ -79,9 +102,136 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
     }
 
     const position = editor.selection.active;
-    const scopeInfo = await analyzeTestScope(document, position, showMessages);
     
-    return scopeInfo;
+    try {
+        const scopeInfo = await analyzeTestScopeWithLanguageServer(document, position, showMessages);
+        return scopeInfo;
+    } catch (error) {
+        console.error('[C# Test Filter] Error using language server, falling back to regex:', error);
+        if (showMessages) {
+            vscode.window.showWarningMessage('C# language server not available, using fallback method');
+        }
+        // Fallback to regex-based detection
+        const scopeInfo = await analyzeTestScope(document, position, showMessages);
+        return scopeInfo;
+    }
+}
+
+async function analyzeTestScopeWithLanguageServer(document: vscode.TextDocument, position: vscode.Position, showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
+    // Get document symbols from the language server
+    const symbols = await getDocumentSymbols(document);
+    
+    if (!symbols || symbols.length === 0) {
+        throw new Error('No symbols available from language server');
+    }
+
+    // Extract assembly name from file path
+    const assemblyName = extractAssemblyName(document.uri.fsPath);
+    
+    // Extract namespace from symbols
+    const namespace = findNamespaceFromSymbols(symbols);
+    
+    // Find the class and method at cursor position
+    const classSymbol = findClassAtPosition(symbols, position);
+    
+    if (!classSymbol) {
+        if (showMessages) {
+            vscode.window.showWarningMessage('Could not detect class at cursor position');
+        }
+        return undefined;
+    }
+
+    const methodSymbol = findMethodAtPosition(classSymbol, position);
+
+    // Build the test filter based on TUnit format: /AssemblyName/Namespace/ClassName/MethodName
+    let filter = `/*/${namespace || '*'}/${classSymbol.name}`;
+    
+    if (methodSymbol) {
+        filter += `/${methodSymbol.name}`;
+    } else {
+        filter += '/*';
+        if (showMessages) {
+            vscode.window.showInformationMessage('No method in scope - using class filter');
+        }
+    }
+
+    return {
+        assembly: assemblyName,
+        className: classSymbol.name,
+        methodName: methodSymbol?.name,
+        filter: filter
+    };
+}
+
+async function getDocumentSymbols(document: vscode.TextDocument): Promise<vscode.DocumentSymbol[] | undefined> {
+    const cacheKey = document.uri.toString();
+    const cached = symbolCache.get(cacheKey);
+    
+    // Return cached symbols if still valid
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.symbols;
+    }
+
+    // Request symbols from language server
+    const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+        'vscode.executeDocumentSymbolProvider',
+        document.uri
+    );
+
+    if (symbols) {
+        symbolCache.set(cacheKey, { symbols, timestamp: Date.now() });
+    }
+
+    return symbols;
+}
+
+function findNamespaceFromSymbols(symbols: vscode.DocumentSymbol[]): string | undefined {
+    for (const symbol of symbols) {
+        if (symbol.kind === vscode.SymbolKind.Namespace) {
+            return symbol.name;
+        }
+        // Recursively search in children
+        if (symbol.children && symbol.children.length > 0) {
+            const nested = findNamespaceFromSymbols(symbol.children);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+    return undefined;
+}
+
+function findClassAtPosition(symbols: vscode.DocumentSymbol[], position: vscode.Position): vscode.DocumentSymbol | undefined {
+    for (const symbol of symbols) {
+        // Check if this is a class and contains the position
+        if (symbol.kind === vscode.SymbolKind.Class && symbol.range.contains(position)) {
+            return symbol;
+        }
+        
+        // Recursively search in children (e.g., classes inside namespaces)
+        if (symbol.children && symbol.children.length > 0) {
+            const nested = findClassAtPosition(symbol.children, position);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+    return undefined;
+}
+
+function findMethodAtPosition(classSymbol: vscode.DocumentSymbol, position: vscode.Position): vscode.DocumentSymbol | undefined {
+    if (!classSymbol.children) {
+        return undefined;
+    }
+
+    for (const child of classSymbol.children) {
+        // Check if this is a method and contains the position
+        if (child.kind === vscode.SymbolKind.Method && child.range.contains(position)) {
+            return child;
+        }
+    }
+    
+    return undefined;
 }
 
 async function analyzeTestScope(document: vscode.TextDocument, position: vscode.Position, showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
@@ -170,10 +320,20 @@ function findClassName(lines: string[], currentLine: number): string | undefined
 function findMethodName(lines: string[], currentLine: number): string | undefined {
     let braceCount = 0;
     let foundMethod: string | undefined;
+    let inMethod = false;
     
     // Search backwards from current line to find method declaration
     for (let i = currentLine; i >= 0; i--) {
         const line = lines[i].trim();
+        
+        // Stop at class declaration - check this FIRST to avoid matching class name as method
+        if (line.match(/(?:public|private|internal|protected)?\s*(?:static|abstract|sealed)?\s*(?:partial)?\s*class\s+\w+/)) {
+            // If we're ON the class line or haven't entered a method yet, return undefined
+            if (i === currentLine || !inMethod) {
+                return undefined;
+            }
+            break;
+        }
         
         // Count braces to determine if we're inside a method
         const openBraces = (line.match(/{/g) || []).length;
@@ -188,24 +348,20 @@ function findMethodName(lines: string[], currentLine: number): string | undefine
             return foundMethod;
         }
         
-        // Match method declarations (including async, static, etc.)
+        // Match method declarations - must have parentheses for parameters
         const methodMatch = line.match(/(?:public|private|internal|protected)?\s*(?:static|async|virtual|override|abstract)?\s*(?:async)?\s*(?:\w+(?:<[^>]+>)?)\s+(\w+)\s*\(/);
-        if (methodMatch && !foundMethod) {
+        if (methodMatch) {
             foundMethod = methodMatch[1];
+            inMethod = true;
             
             // If we're on the same line as the method declaration, return immediately
             if (i === currentLine) {
                 return foundMethod;
             }
         }
-        
-        // Stop at class declaration
-        if (line.match(/(?:public|private|internal|protected)?\s*(?:static|abstract|sealed)?\s*(?:partial)?\s*class\s+\w+/)) {
-            break;
-        }
     }
     
-    return foundMethod;
+    return inMethod ? foundMethod : undefined;
 }
 
 export function deactivate() {}

@@ -2,17 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug Current Test (Auto-detect)",
+      "name": "🎯 TUnit Filter Auto",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
       "program": "dotnet",
       "args": [
         "exec",
-        "${workspaceFolder}/SampleTests/bin/Debug/net10.0/SampleTests.dll",
+        "${workspaceFolder}/bin/Debug/net10.0/SampleTests.dll",
         "--treenode-filter",
-        "${command:csharp-test-filter.getFilter}",
-        "--no-build"
+        "${command:csharp-test-filter.getFilter}"
       ],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
@@ -24,19 +23,33 @@
       "suppressJITOptimizations": true
     },
     {
-      "name": "Debug All Tests",
+      "name": "🎯 TUnit Filter User",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
       "program": "dotnet",
       "args": [
-        "test",
-        "${workspaceFolder}/SampleTests.csproj",
-        "--no-build"
+        "exec",
+        "${workspaceFolder}/bin/Debug/net10.0/SampleTests.dll",
+        "--treenode-filter",
+        "/*/*/${input:testFilter}"
       ],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
-      "stopAtEntry": false
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "justMyCode": true,
+      "suppressJITOptimizations": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testFilter",
+      "type": "promptString",
+      "description": "Enter test filter (format: ClassName/MethodName or ClassName/*)",
+      "default": "CalculatorTests/Add_ShouldReturnCorrectSum"
     }
   ]
 }

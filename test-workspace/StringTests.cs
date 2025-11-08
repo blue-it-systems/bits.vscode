@@ -1,3 +1,5 @@
+using TUnit.Core;
+
 namespace SampleTests;
 
 public class StringTests
