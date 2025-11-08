@@ -2,11 +2,11 @@
   "name": "csharp-test-filter",
   "displayName": "C# Test Filter Helper",
   "description": "Automatically detect C# test scope (assembly/class/method) for TUnit debugging",
-  "version": "1.0.0",
-  "publisher": "BlueITSystems",
+  "version": "1.0.1",
+  "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",
-    "email": "info@it-blue.com",
+    "email": "github.bits.vscode@it-blue.com",
     "url": "https://it-blue.com"
   },
   "engines": {
