@@ -1,35 +1,48 @@
 import * as vscode from 'vscode';
 
+interface TestScopeInfo {
+    assembly: string;
+    className: string;
+    methodName?: string;
+    filter: string;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('C# Test Filter Helper is now active');
 
     // Register command to show test scope
     const showTestScope = vscode.commands.registerCommand('csharp-test-filter.getCurrentTestScope', async () => {
-        const testScope = await getTestScope();
-        if (testScope) {
-            vscode.window.showInformationMessage(`Test Scope: ${testScope}`);
+        const testScopeInfo = await getTestScope();
+        if (testScopeInfo) {
+            const details = [
+                `Assembly: ${testScopeInfo.assembly}`,
+                `Class: ${testScopeInfo.className}`,
+                testScopeInfo.methodName ? `Method: ${testScopeInfo.methodName}` : 'Method: (none - class scope)',
+                `Filter: ${testScopeInfo.filter}`
+            ].join('\n');
+            vscode.window.showInformationMessage(`Test Scope:\n${details}`, { modal: false });
         }
     });
 
     // Register command to copy test filter
     const copyTestFilter = vscode.commands.registerCommand('csharp-test-filter.copyTestFilter', async () => {
-        const testScope = await getTestScope();
-        if (testScope) {
-            await vscode.env.clipboard.writeText(testScope);
-            vscode.window.showInformationMessage(`Test filter copied: ${testScope}`);
+        const testScopeInfo = await getTestScope();
+        if (testScopeInfo) {
+            await vscode.env.clipboard.writeText(testScopeInfo.filter);
+            vscode.window.showInformationMessage(`Test filter copied: ${testScopeInfo.filter}`);
         }
     });
 
     // Register command for input variable (used in launch.json)
     const getTestFilterForInput = vscode.commands.registerCommand('csharp-test-filter.getTestFilterForInput', async () => {
-        const testScope = await getTestScope(false); // Silent mode for input variables
-        return testScope || ''; // Return empty string if no scope found
+        const testScopeInfo = await getTestScope(false); // Silent mode for input variables
+        return testScopeInfo?.filter || ''; // Return empty string if no scope found
     });
 
     context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput);
 }
 
-async function getTestScope(showMessages: boolean = true): Promise<string | undefined> {
+async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
     const editor = vscode.window.activeTextEditor;
     
     if (!editor) {
@@ -50,12 +63,12 @@ async function getTestScope(showMessages: boolean = true): Promise<string | unde
     }
 
     const position = editor.selection.active;
-    const scope = await analyzeTestScope(document, position, showMessages);
+    const scopeInfo = await analyzeTestScope(document, position, showMessages);
     
-    return scope;
+    return scopeInfo;
 }
 
-async function analyzeTestScope(document: vscode.TextDocument, position: vscode.Position, showMessages: boolean = true): Promise<string | undefined> {
+async function analyzeTestScope(document: vscode.TextDocument, position: vscode.Position, showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
     const text = document.getText();
     const lines = text.split('\n');
     const currentLine = position.line;
@@ -86,7 +99,12 @@ async function analyzeTestScope(document: vscode.TextDocument, position: vscode.
         }
     }
 
-    return filter;
+    return {
+        assembly: assemblyName,
+        className: className,
+        methodName: methodName,
+        filter: filter
+    };
 }
 
 function extractAssemblyName(filePath: string): string {
