@@ -22,7 +22,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register command to show test scope
     const showTestScope = vscode.commands.registerCommand('csharp-test-filter.getCurrentTestScope', async () => {
+        console.log('[C# Test Filter] Command getCurrentTestScope triggered!');
         const testScopeInfo = await getTestScope();
+        console.log('[C# Test Filter] getTestScope returned:', testScopeInfo);
         if (testScopeInfo) {
             const details = [
                 `Assembly: ${testScopeInfo.assembly}`,
@@ -31,6 +33,8 @@ export function activate(context: vscode.ExtensionContext) {
                 `Filter: ${testScopeInfo.filter}`
             ].join('\n');
             vscode.window.showInformationMessage(`Test Scope:\n${details}`, { modal: false });
+        } else {
+            console.log('[C# Test Filter] No test scope info returned!');
         }
     });
 
