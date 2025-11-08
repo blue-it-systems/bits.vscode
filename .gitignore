@@ -8,6 +8,10 @@ out/
 dist/
 *.vsix
 
+# Test workspace build artifacts
+test-workspace/bin/
+test-workspace/obj/
+
 # TypeScript cache
 *.tsbuildinfo
 
