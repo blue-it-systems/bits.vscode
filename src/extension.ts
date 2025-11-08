@@ -17,6 +17,9 @@ interface SymbolInfo {
 const symbolCache = new Map<string, { symbols: vscode.DocumentSymbol[], timestamp: number }>();
 const CACHE_TTL = 5000; // 5 seconds
 
+// Store last selected test method
+let lastTestFilter: string | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('C# Test Filter Helper is now active');
 
@@ -92,6 +95,10 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
         if (showMessages) {
             vscode.window.showWarningMessage('No active editor');
         }
+        // Return last test filter if available
+        if (lastTestFilter) {
+            return { assembly: '', className: '', filter: lastTestFilter };
+        }
         return undefined;
     }
 
@@ -102,6 +109,10 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
         if (showMessages) {
             vscode.window.showWarningMessage('Current file is not a C# file');
         }
+        // Return last test filter if available
+        if (lastTestFilter) {
+            return { assembly: '', className: '', filter: lastTestFilter };
+        }
         return undefined;
     }
 
@@ -109,6 +120,17 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
     
     try {
         const scopeInfo = await analyzeTestScopeWithLanguageServer(document, position, showMessages);
+        
+        // If we found a test method, save it
+        if (scopeInfo?.methodName) {
+            lastTestFilter = scopeInfo.filter;
+            console.log('[C# Test Filter] Saved last test filter:', lastTestFilter);
+        } else if (scopeInfo && !scopeInfo.methodName && lastTestFilter) {
+            // We're at class level but have a previous test method - use it
+            console.log('[C# Test Filter] Using last test filter:', lastTestFilter);
+            return { ...scopeInfo, filter: lastTestFilter };
+        }
+        
         return scopeInfo;
     } catch (error) {
         console.error('[C# Test Filter] Error using language server, falling back to regex:', error);
@@ -117,6 +139,17 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
         }
         // Fallback to regex-based detection
         const scopeInfo = await analyzeTestScope(document, position, showMessages);
+        
+        // If we found a test method, save it
+        if (scopeInfo?.methodName) {
+            lastTestFilter = scopeInfo.filter;
+            console.log('[C# Test Filter] Saved last test filter:', lastTestFilter);
+        } else if (scopeInfo && !scopeInfo.methodName && lastTestFilter) {
+            // We're at class level but have a previous test method - use it
+            console.log('[C# Test Filter] Using last test filter:', lastTestFilter);
+            return { ...scopeInfo, filter: lastTestFilter };
+        }
+        
         return scopeInfo;
     }
 }

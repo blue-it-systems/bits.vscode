@@ -11,6 +11,8 @@ cursor position for seamless TUnit debugging in VS Code.
   format
 - **Debug Integration**: Works seamlessly with VS Code's launch.json
 - **Class & Method Level**: Run entire test classes or individual methods
+- **Last Test Memory**: Remembers your last selected test method and uses it
+  automatically when cursor is not on a test
 - **Fallback Support**: Works even without C# Dev Kit installed
 
 ## Quick Start
@@ -47,6 +49,10 @@ Add this to your `.vscode/launch.json`:
 
 The extension automatically detects your test scope and runs only the
 relevant tests.
+
+**Tip**: The extension remembers your last selected test method. If you move
+your cursor away from tests, it will automatically reuse the last test you
+selected!
 
 ## Commands
 
