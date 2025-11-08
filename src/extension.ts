@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Register command for input variable (used in launch.json)
     const getTestFilterForInput = vscode.commands.registerCommand('csharp-test-filter.getTestFilterForInput', async () => {
         const testScopeInfo = await getTestScope(false); // Silent mode for input variables
-        return testScopeInfo?.filter || ''; // Return empty string if no scope found
+        return testScopeInfo || { assembly: '', className: '', filter: '' }; // Return full object
     });
 
     context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput);
