@@ -20,10 +20,8 @@ dist/
 *.env
 
 # IDE
-.vscode/
-!.vscode/launch.json
-!.vscode/tasks.json
-!.vscode/extensions.json
+# Keep .vscode directory for extension development
+# .vscode/
 .idea/
 
 # Logs

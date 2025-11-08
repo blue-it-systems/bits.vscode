@@ -1,0 +1,16 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.eslintrc.js
+tsconfig.json
+**/*.map
+**/*.ts
+!out/**/*.js
+node_modules/**
+*.vsix
+.github/**
+TESTING.md
+PUBLISHING.md
+PROJECT_SUMMARY.md
+examples/**

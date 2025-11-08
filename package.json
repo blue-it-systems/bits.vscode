@@ -1,0 +1,73 @@
+{
+  "name": "csharp-test-filter",
+  "displayName": "C# Test Filter Helper",
+  "description": "Automatically detect C# test scope (assembly/class/method) for TUnit debugging",
+  "version": "0.0.1",
+  "publisher": "blue-it-systems",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Testing",
+    "Debuggers"
+  ],
+  "keywords": [
+    "csharp",
+    "testing",
+    "tunit",
+    "debugging",
+    "test-filter"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "csharp-test-filter.getCurrentTestScope",
+        "title": "C# Test Filter: Get Current Test Scope"
+      },
+      {
+        "command": "csharp-test-filter.copyTestFilter",
+        "title": "C# Test Filter: Copy Test Filter to Clipboard"
+      }
+    ],
+    "configuration": {
+      "title": "C# Test Filter",
+      "properties": {
+        "csharpTestFilter.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification messages when detecting test scope"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.x",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0",
+    "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blue-it-systems/bits.vscode.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/blue-it-systems/bits.vscode/issues"
+  },
+  "homepage": "https://github.com/blue-it-systems/bits.vscode#readme"
+}

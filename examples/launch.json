@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "inputs": [
+    {
+      "id": "testFilter",
+      "type": "promptString",
+      "description": "Test filter (or leave empty to auto-detect from cursor)",
+      "default": ""
+    }
+  ],
+  "configurations": [
+    {
+      "name": ".NET Core Launch (TUnit Tests)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "dotnet",
+      "args": [
+        "exec",
+        "${workspaceFolder}/tests/BITS.Terminal.Tests/bin/Debug/net10.0/BITS.Terminal.Tests.dll",
+        "--treenode-filter",
+        "/*/*/${input:testFilter}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": ".NET Core Launch (TUnit - Auto Detect Test)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "dotnet",
+      "args": [
+        "exec",
+        "${workspaceFolder}/tests/BITS.Terminal.Tests/bin/Debug/net10.0/BITS.Terminal.Tests.dll",
+        "--treenode-filter",
+        "/*/*/${command:csharp-test-filter.getTestFilterForInput}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}
