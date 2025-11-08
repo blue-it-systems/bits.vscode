@@ -1,35 +1,42 @@
-using System;
+using TUnit.Core;
 
-namespace BITS.Terminal.Tests
+namespace ExampleTests
 {
+    /// <summary>
+    /// Example test class demonstrating C# Test Filter Helper usage.
+    /// 
+    /// Try this:
+    /// 1. Place your cursor in Add_ShouldReturnSum method
+    /// 2. Press F5 to debug - only this test will run
+    /// 3. Place cursor on line 9 (class name)
+    /// 4. Press F5 - all tests in this class will run
+    /// </summary>
     public class CalculatorTests
     {
         [Test]
-        public void Add_ShouldReturnSum()
+        public async Task Add_ShouldReturnSum()
         {
-            // Place cursor here and test the extension
-            // Expected output:
-            // Assembly: BITS.Terminal.Tests
-            // Class: CalculatorTests
-            // Method: Add_ShouldReturnSum
-            // Filter: */CalculatorTests/Add_ShouldReturnSum
+            // Cursor here → Filter: /*/ExampleTests/CalculatorTests/Add_ShouldReturnSum
             var result = 2 + 2;
-            Assert.Equal(4, result);
+            await Assert.That(result).IsEqualTo(4);
         }
 
         [Test]
-        public void Subtract_ShouldReturnDifference()
+        public async Task Subtract_ShouldReturnDifference()
         {
-            // Place cursor here for another test
+            // Cursor here → Filter: /*/ExampleTests/CalculatorTests/Subtract_ShouldReturnDifference
             var result = 5 - 3;
-            Assert.Equal(2, result);
+            await Assert.That(result).IsEqualTo(2);
         }
 
-        // Place cursor here (outside methods)
-        // Expected output:
-        // Assembly: BITS.Terminal.Tests
-        // Class: CalculatorTests
-        // Method: (none - class scope)
-        // Filter: */CalculatorTests/*
+        [Test]
+        public async Task Multiply_ShouldReturnProduct()
+        {
+            var result = 3 * 4;
+            await Assert.That(result).IsEqualTo(12);
+        }
+
+        // Cursor here (outside methods) → Filter: /*/ExampleTests/CalculatorTests/*
+        // This will run ALL tests in the class
     }
 }

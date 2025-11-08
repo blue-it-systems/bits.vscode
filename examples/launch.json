@@ -1,45 +1,45 @@
 {
   "version": "0.2.0",
-  "inputs": [
-    {
-      "id": "testFilter",
-      "type": "promptString",
-      "description": "Test filter (or leave empty to auto-detect from cursor)",
-      "default": ""
-    }
-  ],
   "configurations": [
     {
-      "name": ".NET Core Launch (TUnit Tests)",
+      "name": "Debug TUnit Test (Auto-Detect)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
       "program": "dotnet",
       "args": [
         "exec",
-        "${workspaceFolder}/tests/BITS.Terminal.Tests/bin/Debug/net10.0/BITS.Terminal.Tests.dll",
+        "${workspaceFolder}/bin/Debug/net9.0/YourProject.dll",
+        "--treenode-filter",
+        "${command:csharp-test-filter.getFilter}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Debug TUnit Test (Manual Filter)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "dotnet",
+      "args": [
+        "exec",
+        "${workspaceFolder}/bin/Debug/net9.0/YourProject.dll",
         "--treenode-filter",
         "${input:testFilter}"
       ],
       "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "console": "internalConsole"
-    },
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ],
+  "inputs": [
     {
-      "name": ".NET Core Launch (TUnit - Auto Detect Test)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "dotnet",
-      "args": [
-        "exec",
-        "${workspaceFolder}/tests/BITS.Terminal.Tests/bin/Debug/net10.0/BITS.Terminal.Tests.dll",
-        "--treenode-filter",
-        "${command:csharp-test-filter.getTestFilterForInput}"
-      ],
-      "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "console": "internalConsole"
+      "id": "testFilter",
+      "type": "promptString",
+      "description": "TUnit test filter (e.g., /*/Namespace/ClassName/MethodName)",
+      "default": "/*/*/*/*"
     }
   ]
 }

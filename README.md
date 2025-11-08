@@ -95,10 +95,19 @@ npm run compile
 ```
 ├── src/
 │   └── extension.ts       # Main extension logic
+├── examples/              # Usage examples and configurations
 ├── test-workspace/        # Example TUnit project for testing
 ├── package.json           # Extension manifest
 └── tsconfig.json          # TypeScript configuration
 ```
+
+## Examples
+
+See the [examples](examples/) directory for:
+
+- Complete `launch.json` configurations
+- Sample test files with TUnit
+- API usage documentation
 
 ## Support & Feedback
 

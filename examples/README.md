@@ -1,7 +1,38 @@
-# API Usage Examples
+# Examples
 
-This document shows how to use the C# Test Filter Helper extension
-programmatically.
+This directory contains practical examples for using the C# Test Filter
+Helper extension.
+
+## Files
+
+### `launch.json`
+
+Example VS Code debug configurations showing:
+
+- **Auto-Detect**: Automatically detect test from cursor position
+- **Manual Filter**: Prompt for manual test filter input
+
+Copy the relevant configuration to your project's
+`.vscode/launch.json` file.
+
+### `TestExample.cs`
+
+Sample TUnit test class demonstrating:
+
+- Method-level filtering (run single test)
+- Class-level filtering (run all tests in class)
+- Comments explaining filter output at each cursor position
+
+## Quick Start
+
+1. Copy `launch.json` configurations to your project
+2. Update the `program` path to match your test DLL location
+3. Open any C# test file
+4. Place cursor in a test method
+5. Press **F5** to debug
+
+The extension will automatically detect your test scope and generate
+the appropriate TUnit filter.
 
 ## Command Variables for launch.json
 
@@ -70,7 +101,7 @@ await vscode.commands.executeCommand(
 // Copies filter string to clipboard
 ```
 
-## Full Object Access
+## Programmatic API Access
 
 For programmatic access from another extension:
 
@@ -93,3 +124,10 @@ const scopeInfo = await vscode.commands.executeCommand(
 The extension uses VS Code's C# language server (via C# Dev Kit or
 OmniSharp) for accurate symbol detection. If the language server is
 unavailable, it falls back to regex-based detection.
+
+## Additional Resources
+
+- [Main README](../README.md)
+- [Changelog](../CHANGELOG.md)
+- [GitHub Repository](https://github.com/blue-it-systems/bits.vscode)
+
