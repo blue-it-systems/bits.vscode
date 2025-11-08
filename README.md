@@ -127,8 +127,6 @@ Developed by [Blue IT Systems GmbH](https://it-blue.com) - A German software
 development company specializing in custom solutions, DevOps, and digital
 transformation.
 
-**Headquarters**: Odenwaldstrasse 16, D-63526 Erlensee, Germany
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
