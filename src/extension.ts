@@ -20,8 +20,14 @@ const CACHE_TTL = 5000; // 5 seconds
 // Store last selected test method
 let lastTestFilter: string | undefined;
 
+// Reusable output channel
+let outputChannel: vscode.OutputChannel | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('C# Test Filter Helper is now active');
+    
+    // Create output channel once
+    outputChannel = vscode.window.createOutputChannel('C# Test Filter');
 
     // Register command to show test scope
     const showTestScope = vscode.commands.registerCommand('csharp-test-filter.getCurrentTestScope', async () => {
@@ -68,16 +74,21 @@ export function activate(context: vscode.ExtensionContext) {
             await ensureBreakpointAtMethodEntry(testScopeInfo);
         }
         
-        // Also show in output channel for debugging
-        const outputChannel = vscode.window.createOutputChannel('C# Test Filter');
-        outputChannel.appendLine(`=== Test Filter Debug Info ===`);
-        outputChannel.appendLine(`Filter: ${filter}`);
-        outputChannel.appendLine(`Assembly: ${testScopeInfo?.assembly}`);
-        outputChannel.appendLine(`Namespace: ${testScopeInfo?.className ? 'extracted from file' : 'not found'}`);
-        outputChannel.appendLine(`Class: ${testScopeInfo?.className}`);
-        outputChannel.appendLine(`Method: ${testScopeInfo?.methodName || '(none - class level)'}`);
-        outputChannel.appendLine(`Detection: Language Server`);
-        outputChannel.show(true);
+        // Check if debug output is enabled
+        const config = vscode.workspace.getConfiguration('csharpTestFilter');
+        const showDebugOutput = config.get<boolean>('showDebugOutput', false);
+        
+        if (showDebugOutput && outputChannel) {
+            outputChannel.clear();
+            outputChannel.appendLine(`=== Test Filter Debug Info ===`);
+            outputChannel.appendLine(`Filter: ${filter}`);
+            outputChannel.appendLine(`Assembly: ${testScopeInfo?.assembly}`);
+            outputChannel.appendLine(`Namespace: ${testScopeInfo?.className ? 'extracted from file' : 'not found'}`);
+            outputChannel.appendLine(`Class: ${testScopeInfo?.className}`);
+            outputChannel.appendLine(`Method: ${testScopeInfo?.methodName || '(none - class level)'}`);
+            outputChannel.appendLine(`Detection: Language Server`);
+            outputChannel.show(true);
+        }
         return filter;
     });
 
