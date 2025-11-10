@@ -150,10 +150,15 @@ async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo
         
         return scopeInfo;
     } catch (error) {
-        console.error('[C# Test Filter] Error using language server, falling back to regex:', error);
-        if (showMessages) {
-            vscode.window.showWarningMessage('C# language server not available, using fallback method');
+        // Only log to console if debug output is enabled
+        const config = vscode.workspace.getConfiguration('csharpTestFilter');
+        const showDebugOutput = config.get<boolean>('showDebugOutput', false);
+        
+        if (showDebugOutput) {
+            console.error('[C# Test Filter] Error using language server, falling back to regex:', error);
         }
+        
+        // Don't show warning message - fallback is transparent to user
         // Fallback to regex-based detection
         const scopeInfo = await analyzeTestScope(document, position, showMessages);
         
