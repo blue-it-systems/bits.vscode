@@ -57,7 +57,7 @@ class Program
 
             // Create initial timestamp file
             var createdFiles = new List<string>();
-            var tsFile = Path.Combine(genPath, $"generated-{DateTime.UtcNow:yyyyMMddHHmmss}.txt");
+            var tsFile = Path.Combine(genPath, $"generated-{DateTime.UtcNow:yyyy.MM.dd.HH-mm}.txt");
             File.WriteAllText(tsFile, DateTime.UtcNow.ToString("o") + "\n");
             createdFiles.Add(tsFile);
 

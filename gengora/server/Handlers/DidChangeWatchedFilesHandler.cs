@@ -16,6 +16,8 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
 
     public override async Task<Unit> Handle(DidChangeWatchedFilesParams request, CancellationToken cancellationToken)
     {
+        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Received {request.Changes.Count()} file change(s)");
+        
         // Debounce file changes
         await (this._DebounceCts?.CancelAsync() ?? Task.CompletedTask);
         this._DebounceCts = new CancellationTokenSource();
@@ -30,6 +32,7 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
                 var filePath = change.Uri.GetFileSystemPath();
                 if (!string.IsNullOrEmpty(filePath))
                 {
+                    await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Processing: {filePath}");
                     await this._GeneratorService.HandleFileChangeAsync(filePath, cancellationToken);
                 }
             }
@@ -37,6 +40,7 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
         catch (OperationCanceledException)
         {
             // Debounced - ignore
+            await Console.Error.WriteLineAsync("[DidChangeWatchedFilesHandler] Debounced");
         }
 
         return Unit.Value;

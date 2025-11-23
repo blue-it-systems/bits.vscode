@@ -89,7 +89,13 @@ public class GeneratorService : IGeneratorService
         var projectPath = this._GeneratorManager.GetCurrentProjectPath();
         if (!string.IsNullOrEmpty(projectPath))
         {
+            await Console.Error.WriteLineAsync($"[GeneratorService] Setting observation for project: {projectPath}");
             await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
+            await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode is now: {this._ObservationManager.CurrentMode}");
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"[GeneratorService] WARNING: No project path available for observation manager");
         }
 
         var build = await this._GeneratorManager.BuildGeneratorAsync(cancellationToken);
@@ -180,6 +186,10 @@ public class GeneratorService : IGeneratorService
 
     public async Task HandleFileChangeAsync(string filePath, CancellationToken cancellationToken)
     {
+        await Console.Error.WriteLineAsync($"[GeneratorService] File changed: {filePath}");
+        await Console.Error.WriteLineAsync($"[GeneratorService] Current observation mode: {this._ObservationManager.CurrentMode}");
+        await Console.Error.WriteLineAsync($"[GeneratorService] Is paused: {this._IsPaused}");
+        
         // If it's a .csproj file, recheck marker
         if (filePath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
         {
@@ -194,7 +204,12 @@ public class GeneratorService : IGeneratorService
         // If in full observation mode and not paused, trigger restart
         if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
         {
+            await Console.Error.WriteLineAsync($"[GeneratorService] Triggering rebuild due to file change");
             await this.RestartGeneratorAsync(cancellationToken);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"[GeneratorService] Skipping rebuild - mode={this._ObservationManager.CurrentMode}, paused={this._IsPaused}");
         }
     }
 
