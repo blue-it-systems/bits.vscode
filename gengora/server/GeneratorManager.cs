@@ -103,6 +103,15 @@ public class GeneratorManager(string workspaceRoot)
         await Console.Error.WriteLineAsync("[GeneratorManager] No generator project found with marker");
         return false;
     }
+
+    /// <summary>
+    /// Gets the currently loaded generator project path.
+    /// </summary>
+    public string? GetCurrentProjectPath()
+    {
+        return this._GeneratorProjectPath;
+    }
+
     public class BuildResult
     {
         public bool Success { get; set; }

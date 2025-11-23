@@ -85,6 +85,13 @@ public class GeneratorService : IGeneratorService
             return;
         }
 
+        // Update observation manager with discovered project
+        var projectPath = this._GeneratorManager.GetCurrentProjectPath();
+        if (!string.IsNullOrEmpty(projectPath))
+        {
+            await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
+        }
+
         var build = await this._GeneratorManager.BuildGeneratorAsync(cancellationToken);
         
         if (!build.Success)

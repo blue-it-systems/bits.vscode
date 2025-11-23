@@ -71,7 +71,7 @@ class Program
                     created = createdFiles
                 }
             };
-            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(createdMsg));
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(createdMsg)); 
         }
         catch (Exception ex)
         {

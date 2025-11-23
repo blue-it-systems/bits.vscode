@@ -60,7 +60,7 @@ export const Build = {
  * Default configuration values
  */
 export const Defaults = {
-    LOG_LEVEL: 'info',
+    LOG_LEVEL: 'warning',
     AUTO_RUN_ON_COMPILE_SUCCESS: true,
     AUTO_START_DELAY_MS: 500,
     IGNORE_PATTERNS: [

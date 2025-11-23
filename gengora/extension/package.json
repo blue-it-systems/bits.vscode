@@ -91,14 +91,14 @@
         },
         "gengora.logLevel": {
           "type": "string",
-          "default": "info",
+          "default": "warning",
           "enum": [
             "error",
             "warning",
             "info",
             "debug"
           ],
-          "description": "Logging verbosity level for the Gengora output channel.",
+          "description": "Logging verbosity level for the Gengora output channel. Use 'info' or 'debug' for detailed output.",
           "scope": "window"
         }
       }

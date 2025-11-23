@@ -25,14 +25,22 @@ internal class Program
             }
         }
 
+        // Set log level: Warning for Release builds, Debug for development
+        #if DEBUG
+        var minLogLevel = LogLevel.Debug;
+        #else
+        var minLogLevel = LogLevel.Warning;
+        #endif
+
         var server = await LanguageServer.From(options =>
             options
                 .WithInput(Console.OpenStandardInput())
                 .WithOutput(Console.OpenStandardOutput())
                 .ConfigureLogging(x => x
                     .AddLanguageProtocolLogging()
-                    .SetMinimumLevel(LogLevel.Debug))
+                    .SetMinimumLevel(minLogLevel))
                 .WithServices(services => ConfigureServices(services, workspaceRoot))
+                .WithConfigurationSection("gengora")
                 .WithHandler<ExecuteCommandHandler>()
                 .WithHandler<DidChangeWatchedFilesHandler>()
                 .OnInitialize

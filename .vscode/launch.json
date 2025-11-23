@@ -34,7 +34,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/gengora/extension",
-        "${workspaceFolder}/gengora"
+        "${workspaceFolder}/gengora/test-workspace"
       ],
       "outFiles": [
         "${workspaceFolder}/gengora/extension/out/**/*.js"
