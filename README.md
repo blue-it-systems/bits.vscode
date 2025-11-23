@@ -12,6 +12,14 @@ Automatically detect C# test scope (assembly/class/method) for TUnit debugging.
 
 See the [extension README](./csharp-test-filter/README.md) for more details.
 
+### Gengora - Live Code Generator
+
+Located in `gengora/`
+
+Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly. Features intelligent file watching, automatic recompilation, and live status updates.
+
+See the [extension README](./gengora/README.md) for more details.
+
 ## Development
 
 To work on an extension:
