@@ -1,3 +1,11 @@
+using System.Text;
+using BITS.Gengora.Server.Handlers;
+using BITS.Gengora.Server.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+using OmniSharp.Extensions.LanguageServer.Server;
+
 namespace BITS.Gengora.Server;
 
 internal class Program
@@ -32,16 +40,14 @@ internal class Program
                     async (server, request, cancellationToken) =>
                     {
                         // Log initialization
-                        Console.Error.WriteLine($"[Gengora Server] Initializing for workspace: {workspaceRoot}");
-                        await Task.CompletedTask;
+                        await Console.Error.WriteLineAsync($"[Gengora Server] Initializing for workspace: {workspaceRoot}");
                     }
                 )
                 .OnInitialized
                 (
                     async (server, request, response, cancellationToken) =>
                     {
-                        Console.Error.WriteLine("[Gengora Server] Initialized successfully");
-                        await Task.CompletedTask;
+                        await Console.Error.WriteLineAsync("[Gengora Server] Initialized successfully");
                     }
                 )
         );

@@ -1,3 +1,10 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Build.Locator;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.MSBuild;
+
 namespace BITS.Gengora.Server;
 
 public class GeneratorManager(string workspaceRoot)
@@ -26,30 +33,40 @@ public class GeneratorManager(string workspaceRoot)
             return true;
         }
 
-        // Heuristic: prefer an exact Generator.csproj in the workspace (or a folder named "Generator"),
-        // otherwise fall back to the broader *Generator*.csproj pattern.
-        var csproj = Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_PROJECT_NAME, SearchOption.AllDirectories).FirstOrDefault();
-
+        // Search strategy:
+        // 1. Look for "Gengora" or "Generator" folder at top level
+        // 2. Find Generator.csproj within that folder
+        // 3. Exclude server, extension, .vscode folders
+        
+        string? csproj = null;
+        
+        // Try Gengora folder first (current naming)
+        var gengoraFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENGORA_FOLDER_NAME);
+        if (Directory.Exists(gengoraFolder))
+        {
+            var csprojs = Directory.GetFiles(gengoraFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
+            csproj = csprojs.FirstOrDefault();
+        }
+        
+        // Try Generator folder (fallback)
         if (csproj is null)
         {
-            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME, SearchOption.AllDirectories).FirstOrDefault();
-            
-            if (genFolder != null)
+            var generatorFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME);
+            if (Directory.Exists(generatorFolder))
             {
-                csproj = Directory.GetFiles(genFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly).FirstOrDefault();
+                var csprojs = Directory.GetFiles(generatorFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
+                csproj = csprojs.FirstOrDefault();
             }
         }
-
-        csproj ??= Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_WILDCARD, SearchOption.AllDirectories).FirstOrDefault();
-
+        
+        // Fallback: search all directories but exclude server/extension/.vscode
         if (csproj is null)
         {
-            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME, SearchOption.AllDirectories).FirstOrDefault();
+            var allCsprojs = Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_PROJECT_NAME, SearchOption.AllDirectories)
+                .Where(p => !Constants.Patterns.EXCLUDED_FOLDERS.Any(excluded => p.Contains(Path.DirectorySeparatorChar + excluded + Path.DirectorySeparatorChar)))
+                .ToArray();
             
-            if (genFolder != null)
-            {
-                csproj = Directory.GetFiles(genFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly).FirstOrDefault();
-            }
+            csproj = allCsprojs.FirstOrDefault();
         }
 
         if (csproj is null)
@@ -115,8 +132,8 @@ public class GeneratorManager(string workspaceRoot)
         var full = output.ToString();
 
         // debug: log raw build output so it's visible in server stderr
-        Console.Error.WriteLine("[GeneratorManager] build output:\n" + full);
-        Console.Error.WriteLine("[GeneratorManager] exit code: " + proc.ExitCode);
+        await Console.Error.WriteLineAsync("[GeneratorManager] build output:\n" + full);
+        await Console.Error.WriteLineAsync("[GeneratorManager] exit code: " + proc.ExitCode);
 
         // Parse MSBuild-style diagnostics like: /path/File.cs(12,34): error CS1002: ; expected
         var lines = full.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);

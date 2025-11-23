@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace BITS.Gengora.Server;
 
 public class ProcessManager
@@ -71,7 +73,7 @@ public class ProcessManager
         {
             try
             {
-                this._OutputCts?.Cancel();
+                await (this._OutputCts?.CancelAsync() ?? Task.CompletedTask);
             }
             catch
             {
@@ -103,7 +105,7 @@ public class ProcessManager
                     // Ignore event handler failures
                 }
                 
-                Console.Error.WriteLine("[generator stdout] " + line);
+                await Console.Error.WriteLineAsync("[generator stdout] " + line);
             }
 
             // drain error stream
@@ -123,12 +125,12 @@ public class ProcessManager
                     // Ignore event handler failures
                 }
                 
-                Console.Error.WriteLine("[generator stderr] " + line);
+                await Console.Error.WriteLineAsync("[generator stderr] " + line);
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            Console.Error.WriteLine("PumpOutputAsync error: " + ex.Message);
+            await Console.Error.WriteLineAsync("PumpOutputAsync error: " + ex.Message);
         }
     }
 }

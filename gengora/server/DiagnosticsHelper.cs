@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+
 namespace BITS.Gengora.Server;
 
 internal static class DiagnosticsHelper

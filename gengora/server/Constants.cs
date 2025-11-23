@@ -102,7 +102,7 @@ internal static class Constants
     {
         public const string DOTNET_COMMAND = "dotnet";
         public const string BUILD_ARGS_TEMPLATE = "build \"{0}\" --no-restore --nologo";
-        public const string TARGET_FRAMEWORK = "net10.0";
+        public const string TARGET_FRAMEWORK = "net8.0";
         public const string DEBUG_CONFIG = "Debug";
         public const string BIN_FOLDER = "bin";
         public const string DLL_EXTENSION = ".dll";
@@ -118,8 +118,12 @@ internal static class Constants
     {
         public const string GENERATOR_PROJECT_NAME = "Generator.csproj";
         public const string GENERATOR_FOLDER_NAME = "Generator";
+        public const string GENGORA_FOLDER_NAME = "Gengora";
         public const string GENERATOR_WILDCARD = "*Generator*.csproj";
         public const string CSPROJ_PATTERN = "*.csproj";
+        
+        // Folders to exclude from generator project search
+        public static readonly string[] EXCLUDED_FOLDERS = [ "server", ".vscode", "extension", "node_modules", "bin", "obj" ];
     }
 
     /// <summary>

@@ -1,3 +1,9 @@
+using BITS.Gengora.Server.Services;
+using MediatR;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+using OmniSharp.Extensions.LanguageServer.Protocol.Workspace;
+
 namespace BITS.Gengora.Server.Handlers;
 
 /// <summary>
@@ -11,7 +17,7 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
     public override async Task<Unit> Handle(DidChangeWatchedFilesParams request, CancellationToken cancellationToken)
     {
         // Debounce file changes
-        this._DebounceCts?.Cancel();
+        await (this._DebounceCts?.CancelAsync() ?? Task.CompletedTask);
         this._DebounceCts = new CancellationTokenSource();
 
         try
@@ -35,12 +41,12 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
             (
                 new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
                 {
-                    GlobPattern = "**/*.cs",
+                    GlobPattern = new GlobPattern("**/*.cs"),
                     Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
                 },
                 new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
                 {
-                    GlobPattern = "**/*.csproj",
+                    GlobPattern = new GlobPattern("**/*.csproj"),
                     Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
                 }
             )
