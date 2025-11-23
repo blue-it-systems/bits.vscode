@@ -126,3 +126,10 @@ export const FilePatterns = {
     CSHARP: '**/*.cs',
     CSPROJ: '**/*.csproj',
 } as const;
+
+/**
+ * CLI arguments for server startup
+ */
+export const CliArgs = {
+    WORKSPACE_ROOT: '--workspace-root',
+} as const;

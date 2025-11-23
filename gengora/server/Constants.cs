@@ -116,14 +116,8 @@ internal static class Constants
     /// </summary>
     public static class Patterns
     {
-        public const string GENERATOR_PROJECT_NAME = "Generator.csproj";
-        public const string GENERATOR_FOLDER_NAME = "Generator";
         public const string GENGORA_FOLDER_NAME = "Gengora";
-        public const string GENERATOR_WILDCARD = "*Generator*.csproj";
         public const string CSPROJ_PATTERN = "*.csproj";
-        
-        // Folders to exclude from generator project search
-        public static readonly string[] EXCLUDED_FOLDERS = [ "server", ".vscode", "extension", "node_modules", "bin", "obj" ];
     }
 
     /// <summary>
@@ -169,6 +163,7 @@ internal static class Constants
     public static class Environment
     {
         public const string GENERATOR_PROJECT_PATH = "GENERATOR_PROJECT_PATH";
+        public const string GENERATOR_FOLDER_PATH = "GENERATOR_FOLDER_PATH";
     }
 
     /// <summary>

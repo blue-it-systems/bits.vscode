@@ -105,8 +105,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         log(LogLevel.Debug, `Workspace root: ${workspaceRoot}`);
 
-        // Find generator folder
+        // Find generator folder or project
         const configuredGeneratorPath = config.get<string>('generatorFolderPath') || Constants.Defaults.GENERATOR_FOLDER_PATH;
+        const configuredProjectPath = config.get<string>('generatorProjectPath') || '';
+        
         const generatorRoot = findGeneratorFolder(workspaceRoot, configuredGeneratorPath);
         
         if (!generatorRoot) {
@@ -134,10 +136,21 @@ export async function activate(context: vscode.ExtensionContext) {
         log(LogLevel.Info, `Server: ${serverPath}`);
         log(LogLevel.Info, `Generator project: ${generatorRoot}`);
 
-        // Start language server
+        // Start language server with environment variables for configuration
         const isDll = serverPath.toLowerCase().endsWith('.dll');
+        const serverEnv = {
+            ...process.env,
+            GENERATOR_FOLDER_PATH: configuredGeneratorPath,
+            ...(configuredProjectPath && { GENERATOR_PROJECT_PATH: configuredProjectPath })
+        };
+        
         const serverOptions = isDll 
-            ? { command: 'dotnet', args: [serverPath, generatorRoot], transport: TransportKind.stdio }
+            ? { 
+                command: 'dotnet', 
+                args: [serverPath, Constants.CliArgs.WORKSPACE_ROOT, generatorRoot], 
+                transport: TransportKind.stdio,
+                options: { env: serverEnv }
+            }
             : { command: serverPath, args: [generatorRoot], transport: TransportKind.stdio };
 
         const clientOptions = {

@@ -23,58 +23,67 @@ public class GeneratorManager(string workspaceRoot)
     {
         await this.EnsureMSBuildAsync();
 
-        // First, if a specific project path is provided via environment, prefer that.
-        var envSpecified = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_PROJECT_PATH);
-
-        if (!string.IsNullOrEmpty(envSpecified) && File.Exists(envSpecified))
+        // Priority 1: Specific .csproj file path from environment (GENERATOR_PROJECT_PATH)
+        var envProjectPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_PROJECT_PATH);
+        if (!string.IsNullOrEmpty(envProjectPath))
         {
-            this._GeneratorProjectPath = envSpecified;
-
-            return true;
-        }
-
-        // Search strategy:
-        // 1. Look for "Gengora" or "Generator" folder at top level
-        // 2. Find Generator.csproj within that folder
-        // 3. Exclude server, extension, .vscode folders
-        
-        string? csproj = null;
-        
-        // Try Gengora folder first (current naming)
-        var gengoraFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENGORA_FOLDER_NAME);
-        if (Directory.Exists(gengoraFolder))
-        {
-            var csprojs = Directory.GetFiles(gengoraFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
-            csproj = csprojs.FirstOrDefault();
-        }
-        
-        // Try Generator folder (fallback)
-        if (csproj is null)
-        {
-            var generatorFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME);
-            if (Directory.Exists(generatorFolder))
+            // If it's a .csproj file, use it directly
+            if (File.Exists(envProjectPath) && envProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             {
-                var csprojs = Directory.GetFiles(generatorFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
-                csproj = csprojs.FirstOrDefault();
+                this._GeneratorProjectPath = envProjectPath;
+                return true;
+            }
+            
+            // If it's a folder, look for .csproj inside
+            if (Directory.Exists(envProjectPath))
+            {
+                var csprojs = Directory.GetFiles(envProjectPath, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
+                var csproj = csprojs.FirstOrDefault();
+                if (csproj != null)
+                {
+                    this._GeneratorProjectPath = csproj;
+                    return true;
+                }
             }
         }
-        
-        // Fallback: search all directories but exclude server/extension/.vscode
-        if (csproj is null)
+
+        // Priority 2: Custom folder path from environment (GENERATOR_FOLDER_PATH)
+        var envFolderPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_FOLDER_PATH);
+        if (!string.IsNullOrEmpty(envFolderPath))
         {
-            var allCsprojs = Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_PROJECT_NAME, SearchOption.AllDirectories)
-                .Where(p => !Constants.Patterns.EXCLUDED_FOLDERS.Any(excluded => p.Contains(Path.DirectorySeparatorChar + excluded + Path.DirectorySeparatorChar)))
-                .ToArray();
+            var folderPath = Path.IsPathRooted(envFolderPath) 
+                ? envFolderPath 
+                : Path.Combine(this._WorkspaceRoot, envFolderPath);
             
-            csproj = allCsprojs.FirstOrDefault();
+            if (Directory.Exists(folderPath))
+            {
+                var csprojs = Directory.GetFiles(folderPath, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
+                var csproj = csprojs.FirstOrDefault();
+                if (csproj != null)
+                {
+                    this._GeneratorProjectPath = csproj;
+                    return true;
+                }
+            }
         }
 
-        if (csproj is null)
+        // Priority 3: Default - Look ONLY in the Gengora folder
+        var gengoraFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENGORA_FOLDER_NAME);
+        
+        if (!Directory.Exists(gengoraFolder))
+        {
+            return false;
+        }
+        
+        var defaultCsprojs = Directory.GetFiles(gengoraFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
+        var defaultCsproj = defaultCsprojs.FirstOrDefault();
+
+        if (defaultCsproj is null)
         {
             return false;
         }
 
-        this._GeneratorProjectPath = csproj;
+        this._GeneratorProjectPath = defaultCsproj;
 
         return true;
     }
