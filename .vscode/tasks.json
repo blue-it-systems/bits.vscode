@@ -47,10 +47,10 @@
       "label": "dotnet: build gengora generator",
       "type": "shell",
       "command": "dotnet",
-      "args": ["build", "${workspaceFolder}/gengora/Gengora"],
+      "args": ["build", "${workspaceFolder}/gengora/test-workspace"],
       "presentation": { "reveal": "always", "panel": "shared" },
       "problemMatcher": ["$msCompile"],
-      "options": { "cwd": "${workspaceFolder}/gengora/Gengora" }
+      "options": { "cwd": "${workspaceFolder}/gengora/test-workspace" }
     },
     {
       "label": "npm: build gengora extension",
