@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { LanguageClient, TransportKind } from 'vscode-languageclient/node';
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import { minimatch } from 'minimatch';
+import * as Constants from './constants';
 
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel;
@@ -86,9 +87,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Status bar
         statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-        statusBar.text = '$(sync~spin) Gengora: initializing';
-        statusBar.tooltip = 'Gengora - Click to show output';
-        statusBar.command = 'gengora.showOutput';
+        statusBar.text = Constants.StatusBar.INITIALIZING;
+        statusBar.tooltip = Constants.StatusBar.TOOLTIP;
+        statusBar.command = Constants.Commands.GENGORA_SHOW_OUTPUT;
         statusBar.show();
         context.subscriptions.push(statusBar);
 
@@ -98,35 +99,35 @@ export async function activate(context: vscode.ExtensionContext) {
             const msg = 'No workspace folder opened. Please open a folder containing your generator project.';
             log(LogLevel.Error, msg);
             vscode.window.showErrorMessage(msg);
-            statusBar.text = '$(error) Gengora: No workspace';
+            statusBar.text = Constants.StatusBar.NO_WORKSPACE;
             return;
         }
 
         log(LogLevel.Debug, `Workspace root: ${workspaceRoot}`);
 
         // Find generator folder
-        const configuredGeneratorPath = config.get<string>('generatorFolderPath') || 'Gengora';
+        const configuredGeneratorPath = config.get<string>('generatorFolderPath') || Constants.Defaults.GENERATOR_FOLDER_PATH;
         const generatorRoot = findGeneratorFolder(workspaceRoot, configuredGeneratorPath);
         
         if (!generatorRoot) {
             const msg = `Generator folder "${configuredGeneratorPath}" not found or missing .csproj file`;
             log(LogLevel.Error, msg);
             vscode.window.showErrorMessage(`Gengora: ${msg}`);
-            statusBar.text = '$(error) Gengora: No generator project';
+            statusBar.text = Constants.StatusBar.NO_GENERATOR;
             return;
         }
 
         // Find server DLL
         let serverPath = config.get<string>('serverPath') || '';
         if (!serverPath) {
-            serverPath = path.join(context.extensionPath, '..', 'server', 'bin', 'Debug', 'net8.0', 'BITS.Gengora.Server.dll');
+            serverPath = path.join(context.extensionPath, '..', 'server', 'bin', Constants.Build.DEBUG_CONFIG, Constants.Build.TARGET_FRAMEWORK, Constants.Build.SERVER_DLL_NAME);
         }
 
         if (!fs.existsSync(serverPath)) {
             const msg = `Server not found at ${serverPath}. Please build the server project.`;
             log(LogLevel.Error, msg);
             vscode.window.showErrorMessage(msg);
-            statusBar.text = '$(error) Gengora: Server missing';
+            statusBar.text = Constants.StatusBar.SERVER_MISSING;
             return;
         }
 
@@ -151,44 +152,44 @@ export async function activate(context: vscode.ExtensionContext) {
         log(LogLevel.Info, 'Language client started');
 
         // Register notification handlers
-        client.onNotification('$/generator.stdout', (params: any) => {
-            log(LogLevel.Debug, `[Generator] ${params.text ?? String(params)}`);
+        client.onNotification(Constants.Notifications.GENERATOR_STDOUT, (params: any) => {
+            log(LogLevel.Debug, `[Gengora] ${params.text ?? String(params)}`);
         });
 
-        client.onNotification('$/generator.stderr', (params: any) => {
-            log(LogLevel.Warning, `[Generator stderr] ${params.text ?? String(params)}`);
+        client.onNotification(Constants.Notifications.GENERATOR_STDERR, (params: any) => {
+            log(LogLevel.Warning, `[Gengora stderr] ${params.text ?? String(params)}`);
         });
 
-        client.onNotification('$/generator.status', (params: any) => {
+        client.onNotification(Constants.Notifications.GENERATOR_STATUS, (params: any) => {
             const state = params?.state ?? '';
             log(LogLevel.Info, `Status: ${state}`);
             
             if (statusBar) {
                 switch (state) {
-                    case 'compiling':
-                        statusBar.text = '$(sync~spin) Gengora: compiling';
+                    case Constants.States.COMPILING:
+                        statusBar.text = Constants.StatusBar.COMPILING;
                         break;
-                    case 'compiled':
-                        statusBar.text = '$(check) Gengora: compiled';
+                    case Constants.States.COMPILED:
+                        statusBar.text = Constants.StatusBar.COMPILED;
                         vscode.window.showInformationMessage('Gengora compiled successfully');
                         break;
-                    case 'running':
-                        statusBar.text = '$(play) Gengora: running';
+                    case Constants.States.RUNNING:
+                        statusBar.text = Constants.StatusBar.RUNNING;
                         break;
-                    case 'error':
-                        statusBar.text = '$(error) Gengora: error';
+                    case Constants.States.ERROR:
+                        statusBar.text = Constants.StatusBar.ERROR;
                         vscode.window.showErrorMessage('Gengora encountered an error');
                         break;
-                    case 'stopped':
-                        statusBar.text = '$(debug-stop) Gengora: stopped';
+                    case Constants.States.STOPPED:
+                        statusBar.text = Constants.StatusBar.STOPPED;
                         break;
                 }
             }
         });
 
-        client.onNotification('generator/error', (params: any) => {
+        client.onNotification(Constants.Notifications.GENERATOR_ERROR, (params: any) => {
             const msg = params?.message ?? JSON.stringify(params);
-            log(LogLevel.Error, `Generator error: ${msg}`);
+            log(LogLevel.Error, `Gengora error: ${msg}`);
             vscode.window.showErrorMessage(`Gengora: ${msg}`);
         });
 
@@ -196,9 +197,9 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push({ dispose: () => client?.stop() });
 
         // File watchers - watch only the generator folder
-        const ignorePatterns = config.get<string[]>('ignorePatterns') || [];
-        const csWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, '**/*.cs'));
-        const csprojWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, '**/*.csproj'));
+        const ignorePatterns = config.get<string[]>('ignorePatterns') || [...Constants.Defaults.IGNORE_PATTERNS];
+        const csWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, Constants.FilePatterns.CSHARP));
+        const csprojWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, Constants.FilePatterns.CSPROJ));
 
         const forwardChange = (uri: vscode.Uri, type: number) => {
             if (!client) return;
@@ -209,58 +210,58 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             log(LogLevel.Debug, `File changed: ${path.relative(generatorRoot, uri.fsPath)}`);
-            client.sendNotification('workspace/didChangeWatchedFiles', { 
+            client.sendNotification(Constants.Methods.WORKSPACE_DID_CHANGE_WATCHED_FILES, { 
                 changes: [{ uri: uri.toString(), type }] 
             });
         };
 
-        csWatcher.onDidChange((uri) => forwardChange(uri, 2));
-        csWatcher.onDidCreate((uri) => forwardChange(uri, 1));
-        csWatcher.onDidDelete((uri) => forwardChange(uri, 3));
-        csprojWatcher.onDidChange((uri) => forwardChange(uri, 2));
-        csprojWatcher.onDidCreate((uri) => forwardChange(uri, 1));
-        csprojWatcher.onDidDelete((uri) => forwardChange(uri, 3));
+        csWatcher.onDidChange((uri) => forwardChange(uri, Constants.FileChangeType.CHANGED));
+        csWatcher.onDidCreate((uri) => forwardChange(uri, Constants.FileChangeType.CREATED));
+        csWatcher.onDidDelete((uri) => forwardChange(uri, Constants.FileChangeType.DELETED));
+        csprojWatcher.onDidChange((uri) => forwardChange(uri, Constants.FileChangeType.CHANGED));
+        csprojWatcher.onDidCreate((uri) => forwardChange(uri, Constants.FileChangeType.CREATED));
+        csprojWatcher.onDidDelete((uri) => forwardChange(uri, Constants.FileChangeType.DELETED));
 
         context.subscriptions.push(csWatcher, csprojWatcher);
 
         // Commands
-        context.subscriptions.push(vscode.commands.registerCommand('gengora.run', async () => {
+        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {
             try {
-                log(LogLevel.Info, 'Starting generator...');
+                log(LogLevel.Info, 'Starting Gengora...');
                 if (client) {
-                    await client.sendRequest('workspace/executeCommand', { command: 'gengora.start' });
+                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
                 }
             } catch (error: any) {
                 log(LogLevel.Error, `Failed to start: ${error?.message ?? error}`);
-                vscode.window.showErrorMessage(`Failed to start generator: ${error?.message ?? error}`);
+                vscode.window.showErrorMessage(`Failed to start Gengora: ${error?.message ?? error}`);
             }
         }));
 
-        context.subscriptions.push(vscode.commands.registerCommand('gengora.showOutput', () => {
+        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_SHOW_OUTPUT, () => {
             output.show(false);
         }));
 
-        context.subscriptions.push(vscode.commands.registerCommand('gengora.stop', async () => {
+        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_STOP, async () => {
             try {
-                log(LogLevel.Info, 'Stopping generator...');
+                log(LogLevel.Info, 'Stopping Gengora...');
                 if (client) {
-                    await client.sendRequest('workspace/executeCommand', { command: 'gengora.stop' });
+                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_STOP });
                 }
             } catch (error: any) {
                 log(LogLevel.Error, `Failed to stop: ${error?.message ?? error}`);
-                vscode.window.showErrorMessage(`Failed to stop generator: ${error?.message ?? error}`);
+                vscode.window.showErrorMessage(`Failed to stop Gengora: ${error?.message ?? error}`);
             }
         }));
 
         // Auto-start if configured
-        const autoRun = config.get<boolean>('autoRunOnCompileSuccess') ?? true;
+        const autoRun = config.get<boolean>('autoRunOnCompileSuccess') ?? Constants.Defaults.AUTO_RUN_ON_COMPILE_SUCCESS;
         if (autoRun) {
             log(LogLevel.Info, 'Auto-start enabled');
             try {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, Constants.Defaults.AUTO_START_DELAY_MS));
                 if (client && client.isRunning()) {
                     log(LogLevel.Debug, 'Sending auto-start command...');
-                    await client.sendRequest('workspace/executeCommand', { command: 'gengora.start' });
+                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
                 } else {
                     log(LogLevel.Warning, 'Client not ready for auto-start');
                 }
@@ -270,14 +271,14 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         log(LogLevel.Info, '=== Gengora Extension Activated ===');
-        statusBar.text = '$(check) Gengora: ready';
+        statusBar.text = Constants.StatusBar.READY;
 
     } catch (error: any) {
         const msg = `Activation failed: ${error?.message ?? error}`;
         log(LogLevel.Error, msg);
         vscode.window.showErrorMessage(`Gengora: ${msg}`);
         if (statusBar) {
-            statusBar.text = '$(error) Gengora: activation failed';
+            statusBar.text = Constants.StatusBar.ACTIVATION_FAILED;
         }
     }
 }

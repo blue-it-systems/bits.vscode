@@ -3,8 +3,8 @@ namespace BITS.Gengora.Server;
 public class GeneratorManager(string workspaceRoot)
 {
     private readonly string _WorkspaceRoot = workspaceRoot;
-
     private string? _GeneratorProjectPath;
+    private string? _BuiltAssemblyPath;
 
     public Task EnsureMSBuildAsync()
     {
@@ -17,7 +17,7 @@ public class GeneratorManager(string workspaceRoot)
         await this.EnsureMSBuildAsync();
 
         // First, if a specific project path is provided via environment, prefer that.
-        var envSpecified = Environment.GetEnvironmentVariable("GENERATOR_PROJECT_PATH");
+        var envSpecified = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_PROJECT_PATH);
 
         if (!string.IsNullOrEmpty(envSpecified) && File.Exists(envSpecified))
         {
@@ -28,31 +28,34 @@ public class GeneratorManager(string workspaceRoot)
 
         // Heuristic: prefer an exact Generator.csproj in the workspace (or a folder named "Generator"),
         // otherwise fall back to the broader *Generator*.csproj pattern.
-        var csproj = Directory.GetFiles(this._WorkspaceRoot, "Generator.csproj", SearchOption.AllDirectories).FirstOrDefault();
+        var csproj = Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_PROJECT_NAME, SearchOption.AllDirectories).FirstOrDefault();
 
         if (csproj is null)
         {
-            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, "Generator", SearchOption.AllDirectories).FirstOrDefault();
+            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME, SearchOption.AllDirectories).FirstOrDefault();
             
             if (genFolder != null)
             {
-                csproj = Directory.GetFiles(genFolder, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                csproj = Directory.GetFiles(genFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly).FirstOrDefault();
             }
         }
 
-        csproj ??= Directory.GetFiles(this._WorkspaceRoot, "*Generator*.csproj", SearchOption.AllDirectories).FirstOrDefault();
+        csproj ??= Directory.GetFiles(this._WorkspaceRoot, Constants.Patterns.GENERATOR_WILDCARD, SearchOption.AllDirectories).FirstOrDefault();
 
         if (csproj is null)
         {
-            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, "Generator", SearchOption.AllDirectories).FirstOrDefault();
+            var genFolder = Directory.GetDirectories(this._WorkspaceRoot, Constants.Patterns.GENERATOR_FOLDER_NAME, SearchOption.AllDirectories).FirstOrDefault();
+            
             if (genFolder != null)
             {
-                csproj = Directory.GetFiles(genFolder, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                csproj = Directory.GetFiles(genFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly).FirstOrDefault();
             }
         }
 
         if (csproj is null)
+        {
             return false;
+        }
 
         this._GeneratorProjectPath = csproj;
 
@@ -67,14 +70,17 @@ public class GeneratorManager(string workspaceRoot)
 
     public async Task<BuildResult> BuildGeneratorAsync(CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_GeneratorProjectPath)) throw new InvalidOperationException("Generator project not loaded");
+        if (String.IsNullOrEmpty(this._GeneratorProjectPath))
+        {
+            throw new InvalidOperationException(Constants.ErrorMessages.GENERATOR_PROJECT_NOT_LOADED);
+        }
 
         var projDir = Path.GetDirectoryName(this._GeneratorProjectPath) ?? this._WorkspaceRoot;
 
-        var psi = new System.Diagnostics.ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
-            FileName = "dotnet",
-            Arguments = $"build \"{this._GeneratorProjectPath}\" --no-restore --nologo",
+            FileName = Constants.Build.DOTNET_COMMAND,
+            Arguments = String.Format(Constants.Build.BUILD_ARGS_TEMPLATE, this._GeneratorProjectPath),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -84,11 +90,23 @@ public class GeneratorManager(string workspaceRoot)
 
         var result = new BuildResult();
 
-        var proc = System.Diagnostics.Process.Start(psi)!;
+        var proc = Process.Start(psi)!;
 
         var output = new StringBuilder();
-        proc.OutputDataReceived += (s, e) => { if (e.Data != null) output.AppendLine(e.Data); };
-        proc.ErrorDataReceived += (s, e) => { if (e.Data != null) output.AppendLine(e.Data); };
+        proc.OutputDataReceived += (s, e) => 
+        { 
+            if (e.Data != null)
+            {
+                output.AppendLine(e.Data);
+            }
+        };
+        proc.ErrorDataReceived += (s, e) => 
+        { 
+            if (e.Data != null)
+            {
+                output.AppendLine(e.Data);
+            }
+        };
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
 
@@ -101,8 +119,8 @@ public class GeneratorManager(string workspaceRoot)
         Console.Error.WriteLine("[GeneratorManager] exit code: " + proc.ExitCode);
 
         // Parse MSBuild-style diagnostics like: /path/File.cs(12,34): error CS1002: ; expected
-        var lines = full.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        var rx = new System.Text.RegularExpressions.Regex(@"^(.*\.[a-zA-Z0-9_]+)\((\d+),(\d+)\):\s*(error|warning)\s+([^:]+):\s*(.*)$");
+        var lines = full.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        var rx = new Regex(@"^(.*\.[a-zA-Z0-9_]+)\((\d+),(\d+)\):\s*(error|warning)\s+([^:]+):\s*(.*)$");
 
         foreach (var line in lines)
         {
@@ -111,8 +129,8 @@ public class GeneratorManager(string workspaceRoot)
             if (m.Success)
             {
                 var file = m.Groups[1].Value;
-                var sl = int.Parse(m.Groups[2].Value) - 1;
-                var sc = int.Parse(m.Groups[3].Value) - 1;
+                var sl = Int32.Parse(m.Groups[2].Value) - 1;
+                var sc = Int32.Parse(m.Groups[3].Value) - 1;
                 var severity = m.Groups[4].Value;
                 var code = m.Groups[5].Value;
                 var msg = m.Groups[6].Value;
@@ -136,20 +154,25 @@ public class GeneratorManager(string workspaceRoot)
         if (result.Success)
         {
             // locate the produced dll under bin/Debug/net8.0
-            var projName = Path.GetFileNameWithoutExtension(_GeneratorProjectPath);
-            var candidate = Path.Combine(projDir, "bin", "Debug", "net8.0", projName + ".dll");
+            var projName = Path.GetFileNameWithoutExtension(this._GeneratorProjectPath);
+            var candidate = Path.Combine(projDir, Constants.Build.BIN_FOLDER, Constants.Build.DEBUG_CONFIG, Constants.Build.TARGET_FRAMEWORK, projName + Constants.Build.DLL_EXTENSION);
 
             if (File.Exists(candidate))
+            {
                 this._BuiltAssemblyPath = candidate;
+                result.BuiltAssemblyPath = candidate;
+            }
         }
 
         return result;
     }
 
-    public async Task<string?> EmitGeneratorAssemblyAsync(string builtAssemblyPath, string outputDir, CancellationToken ct)
+    public async Task<string?> EmitGeneratorAssemblyAsync(string? builtAssemblyPath, string outputDir, CancellationToken ct)
     {
         if (String.IsNullOrEmpty(builtAssemblyPath) || !File.Exists(builtAssemblyPath))
+        {
             return null;
+        }
 
         Directory.CreateDirectory(outputDir);
         var dest = Path.Combine(outputDir, Path.GetFileName(builtAssemblyPath));
@@ -158,18 +181,21 @@ public class GeneratorManager(string workspaceRoot)
         // Also copy auxiliary files (runtimeconfig, deps) so `dotnet <assembly>` can run from the output dir.
         var baseName = Path.GetFileNameWithoutExtension(builtAssemblyPath);
         var dir = Path.GetDirectoryName(builtAssemblyPath) ?? String.Empty;
-        var runtimeConfig = Path.Combine(dir, baseName + ".runtimeconfig.json");
-        var deps = Path.Combine(dir, baseName + ".deps.json");
-        var pdb = Path.Combine(dir, baseName + ".pdb");
+        var runtimeConfig = Path.Combine(dir, baseName + Constants.Build.RUNTIME_CONFIG_EXTENSION);
+        var deps = Path.Combine(dir, baseName + Constants.Build.DEPS_EXTENSION);
+        var pdb = Path.Combine(dir, baseName + Constants.Build.PDB_EXTENSION);
 
         try
         {
-             if (File.Exists(runtimeConfig))
-             {
-                 File.Copy(runtimeConfig, Path.Combine(outputDir, Path.GetFileName(runtimeConfig)), overwrite: true);
-             }
+            if (File.Exists(runtimeConfig))
+            {
+                File.Copy(runtimeConfig, Path.Combine(outputDir, Path.GetFileName(runtimeConfig)), overwrite: true);
+            }
         }
-        catch { }
+        catch
+        {
+            // Ignore copy failures
+        }
 
         try
         {

@@ -2,21 +2,25 @@ namespace BITS.Gengora.Server;
 
 public class ProcessManager
 {
-    private Process? _process;
-    private CancellationTokenSource? _outputCts;
+    private Process? _Process;
+    private CancellationTokenSource? _OutputCts;
 
     // Events to report stdout/stderr lines to a caller (e.g. the LSP server)
     public event Action<string>? OnStdout;
     public event Action<string>? OnStderr;
 
-    public bool IsRunning => _process != null && !_process.HasExited;
+    public bool IsRunning => this._Process != null && !this._Process.HasExited;
 
     public async Task StartProcessAsync(string assemblyPath, string? args = null, CancellationToken ct = default)
     {
-        if (IsRunning) throw new InvalidOperationException("Process already running");
+        if (this.IsRunning)
+        {
+            throw new InvalidOperationException(Constants.ErrorMessages.PROCESS_ALREADY_RUNNING);
+        }
+
         var psi = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = Constants.Build.DOTNET_COMMAND,
             Arguments = $"\"{assemblyPath}\" {args}",
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -24,40 +28,58 @@ public class ProcessManager
             CreateNoWindow = true,
         };
 
-        _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        _process.Start();
+        this._Process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        this._Process.Start();
 
-        _outputCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _ = Task.Run(() => PumpOutputAsync(_process, _outputCts.Token));
+        this._OutputCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _ = Task.Run(() => this.PumpOutputAsync(this._Process, this._OutputCts.Token));
     }
 
     public async Task StopProcessAsync(TimeSpan gracefulTimeout)
     {
-        if (_process == null) return;
+        if (this._Process == null)
+            return;
+        
         try
         {
-            if (!_process.HasExited)
+            if (!this._Process.HasExited)
             {
                 // Try polite close
-                try { _process.CloseMainWindow(); } catch { }
-
-                var sw = Stopwatch.StartNew();
-                while (!_process.HasExited && sw.Elapsed < gracefulTimeout)
+                try
                 {
-                    await Task.Delay(200);
+                    this._Process.CloseMainWindow();
+                }
+                catch
+                {
+                    // Ignore close window failures
                 }
 
-                if (!_process.HasExited)
+                var sw = Stopwatch.StartNew();
+                
+                while (!this._Process.HasExited && sw.Elapsed < gracefulTimeout)
                 {
-                    _process.Kill(entireProcessTree: true);
+                    await Task.Delay(Constants.Timeouts.PROCESS_CHECK_DELAY_MS);
+                }
+
+                if (!this._Process.HasExited)
+                {
+                    this._Process.Kill(entireProcessTree: true);
                 }
             }
         }
         finally
         {
-            try { _outputCts?.Cancel(); } catch { }
-            _process?.Dispose();
-            _process = null;
+            try
+            {
+                this._OutputCts?.Cancel();
+            }
+            catch
+            {
+                // Ignore cancellation failures
+            }
+            
+            this._Process?.Dispose();
+            this._Process = null;
         }
     }
 
@@ -68,8 +90,19 @@ public class ProcessManager
             while (!ct.IsCancellationRequested && !proc.HasExited)
             {
                 var line = await proc.StandardOutput.ReadLineAsync();
-                if (line == null) break;
-                try { OnStdout?.Invoke(line); } catch { }
+                
+                if (line == null)
+                    break;
+                
+                try
+                {
+                    this.OnStdout?.Invoke(line);
+                }
+                catch
+                {
+                    // Ignore event handler failures
+                }
+                
                 Console.Error.WriteLine("[generator stdout] " + line);
             }
 
@@ -77,8 +110,19 @@ public class ProcessManager
             while (!ct.IsCancellationRequested && !proc.HasExited)
             {
                 var line = await proc.StandardError.ReadLineAsync();
-                if (line == null) break;
-                try { OnStderr?.Invoke(line); } catch { }
+                
+                if (line == null)
+                    break;
+                
+                try
+                {
+                    this.OnStderr?.Invoke(line);
+                }
+                catch
+                {
+                    // Ignore event handler failures
+                }
+                
                 Console.Error.WriteLine("[generator stderr] " + line);
             }
         }

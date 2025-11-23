@@ -12,13 +12,16 @@ internal static class DiagnosticsHelper
             var tree = d.Location.SourceTree;
             
             if (tree == null)
+            {
                 continue;
+            }
 
             var path = tree.FilePath;
             grouped.GetOrAdd(path, _ => new List<Microsoft.CodeAnalysis.Diagnostic>()).Add(d);
         }
 
         var result = new ConcurrentDictionary<string, List<SimpleDiagnostic>>();
+        
         foreach (var kv in grouped)
         {
             var file = kv.Key;
@@ -30,6 +33,7 @@ internal static class DiagnosticsHelper
 
                 var diagnostic = new SimpleDiagnostic
                 {
+                    FilePath = file,
                     StartLine = span.StartLinePosition.Line,
                     StartChar = span.StartLinePosition.Character,
                     EndLine = span.EndLinePosition.Line,
@@ -47,16 +51,5 @@ internal static class DiagnosticsHelper
 
         return result;
     }
-
-    public class SimpleDiagnostic
-    {
-        public string FilePath { get; set; } = string.Empty;
-        public int StartLine { get; set; }
-        public int StartChar { get; set; }
-        public int EndLine { get; set; }
-        public int EndChar { get; set; }
-        public string Message { get; set; } = string.Empty;
-        public string Severity { get; set; } = string.Empty;
-        public string Code { get; set; } = string.Empty;
-    }
 }
+

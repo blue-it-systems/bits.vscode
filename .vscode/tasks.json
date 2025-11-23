@@ -62,6 +62,16 @@
       "options": { "cwd": "${workspaceFolder}/gengora/extension" }
     },
     {
+      "label": "npm: watch gengora extension",
+      "type": "shell",
+      "command": "npx",
+      "args": ["tsc", "-p", ".", "--watch"],
+      "presentation": { "reveal": "never", "panel": "shared" },
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true,
+      "options": { "cwd": "${workspaceFolder}/gengora/extension" }
+    },
+    {
       "label": "build-gengora-all",
       "dependsOn": ["dotnet: build gengora server", "dotnet: build gengora generator", "npm: build gengora extension"],
       "dependsOrder": "sequence",
