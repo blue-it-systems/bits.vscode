@@ -4,6 +4,7 @@
     {
       "type": "npm",
       "script": "watch",
+      "path": "csharp-test-filter/",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "presentation": {
@@ -17,6 +18,7 @@
     {
       "type": "npm",
       "script": "compile",
+      "path": "csharp-test-filter/",
       "problemMatcher": "$tsc",
       "presentation": {
         "reveal": "never"
@@ -26,6 +28,7 @@
     {
       "type": "npm",
       "script": "lint",
+      "path": "csharp-test-filter/",
       "problemMatcher": "$eslint-stylish",
       "presentation": {
         "reveal": "never"
