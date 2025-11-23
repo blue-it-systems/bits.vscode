@@ -77,21 +77,31 @@ File change detected → Extension notifies server → Server builds & runs
 
 ### Quick Start
 
-1. **Create your generator project folder** (default name: `Gengora`)
+1. **Create your generator project** and mark it with the Gengora marker:
    ```bash
-   mkdir Gengora
-   cd Gengora
+   mkdir test-workspace
+   cd test-workspace
    dotnet new console
    ```
 
-2. **Open the folder in VS Code**
+2. **Add the marker to your `.csproj`** file:
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk">
+     <PropertyGroup>
+       <IsGeneratorProject>true</IsGeneratorProject>
+       <TargetFramework>net8.0</TargetFramework>
+     </PropertyGroup>
+   </Project>
+   ```
+
+3. **Open your workspace in VS Code**
    ```bash
    code .
    ```
 
-3. **The extension auto-activates** and starts watching your generator project
+4. **The extension auto-activates** and discovers your generator project via the marker
 
-4. **Make changes** to your `.cs` files - Gengora automatically rebuilds and reruns
+5. **Make changes** to your `.cs` files - Gengora automatically rebuilds and reruns
 
 ---
 
@@ -103,8 +113,8 @@ Access settings via `File > Preferences > Settings` → search for "Gengora"
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `gengora.generatorFolderPath` | string | `"Gengora"` | Folder name or path containing the generator `.csproj` project (case-sensitive) |
-| `gengora.ignorePatterns` | array | `["**/bin/**", "**/obj/**", "**/.vscode/**", "**/GeneratedProject-*/**"]` | Glob patterns for files/folders to ignore within the generator folder |
+| `gengora.generatorProjectPath` | string | `""` | Optional: Full path to `.csproj` or folder. Leave empty for auto-discovery via `<IsGeneratorProject>true</IsGeneratorProject>` marker |
+| `gengora.excludePatterns` | array | `["**/bin/**", "**/obj/**", "**/.vscode/**"]` | Glob patterns for files/folders to exclude from file watching |
 | `gengora.autoRunOnCompileSuccess` | boolean | `true` | Automatically start the generator after successful compilation |
 | `gengora.logLevel` | string | `"info"` | Logging verbosity: `error`, `warning`, `info`, or `debug` |
 | `gengora.serverPath` | string | `""` | Optional explicit path to the LSP server DLL (leave empty for auto-discovery) |
@@ -113,14 +123,31 @@ Access settings via `File > Preferences > Settings` → search for "Gengora"
 
 ```json
 {
-  "gengora.generatorFolderPath": "MyGenerator",
   "gengora.logLevel": "debug",
-  "gengora.ignorePatterns": [
+  "gengora.excludePatterns": [
     "**/bin/**",
     "**/obj/**",
     "**/output/**"
   ],
   "gengora.autoRunOnCompileSuccess": true
+}
+```
+
+### Marker-Based Discovery
+
+Gengora automatically discovers your generator project by scanning for the `<IsGeneratorProject>true</IsGeneratorProject>` marker in `.csproj` files. This eliminates the need for manual configuration.
+
+**To mark a project as a generator:**
+```xml
+<PropertyGroup>
+  <IsGeneratorProject>true</IsGeneratorProject>
+</PropertyGroup>
+```
+
+**To override auto-discovery** (optional), set `gengora.generatorProjectPath`:
+```json
+{
+  "gengora.generatorProjectPath": "/absolute/path/to/Generator.csproj"
 }
 ```
 

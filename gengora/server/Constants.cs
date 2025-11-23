@@ -172,7 +172,6 @@ internal static class Constants
     public static class Environment
     {
         public const string GENERATOR_PROJECT_PATH = "GENERATOR_PROJECT_PATH";
-        public const string GENERATOR_FOLDER_PATH = "GENERATOR_FOLDER_PATH";
     }
 
     /// <summary>

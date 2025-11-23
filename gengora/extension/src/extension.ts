@@ -2,8 +2,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { LanguageClient, TransportKind } from 'vscode-languageclient/node';
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
-import { minimatch } from 'minimatch';
 import * as Constants from './constants';
 
 let client: LanguageClient | undefined;
@@ -27,48 +25,7 @@ function log(level: LogLevel, message: string) {
     }
 }
 
-function findGeneratorFolder(workspaceRoot: string, configuredPath: string): string | null {
-    try {
-        // Try configured path first (absolute or relative to workspace)
-        const candidatePath = path.isAbsolute(configuredPath) 
-            ? configuredPath 
-            : path.join(workspaceRoot, configuredPath);
-        
-        if (fs.existsSync(candidatePath)) {
-            // Check if it contains a .csproj file
-            const files = fs.readdirSync(candidatePath);
-            const hasCsproj = files.some(f => f.endsWith('.csproj'));
-            if (hasCsproj) {
-                log(LogLevel.Info, `Found generator folder: ${candidatePath}`);
-                return candidatePath;
-            } else {
-                log(LogLevel.Warning, `Folder ${candidatePath} exists but contains no .csproj file`);
-            }
-        }
-        
-        log(LogLevel.Error, `Generator folder not found: ${candidatePath}`);
-        return null;
-    } catch (error: any) {
-        log(LogLevel.Error, `Error finding generator folder: ${error?.message ?? error}`);
-        return null;
-    }
-}
-
-function shouldIgnorePath(filePath: string, generatorRoot: string, ignorePatterns: string[]): boolean {
-    try {
-        const relativePath = path.relative(generatorRoot, filePath);
-        
-        for (const pattern of ignorePatterns) {
-            if (minimatch(relativePath, pattern, { dot: true })) {
-                return true;
-            }
-        }
-        return false;
-    } catch (error: any) {
-        log(LogLevel.Debug, `Error checking ignore patterns: ${error?.message ?? error}`);
-        return false;
-    }
-}
+// No longer needed - server handles all discovery and file watching
 
 export async function activate(context: vscode.ExtensionContext) {
     try {
@@ -105,18 +62,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
         log(LogLevel.Debug, `Workspace root: ${workspaceRoot}`);
 
-        // Find generator folder or project
-        const configuredGeneratorPath = config.get<string>('generatorFolderPath') || Constants.Defaults.GENERATOR_FOLDER_PATH;
+        // Get user-specified project path (if any)
         const configuredProjectPath = config.get<string>('generatorProjectPath') || '';
         
-        const generatorRoot = findGeneratorFolder(workspaceRoot, configuredGeneratorPath);
-        
-        if (!generatorRoot) {
-            const msg = `Generator folder "${configuredGeneratorPath}" not found or missing .csproj file`;
-            log(LogLevel.Error, msg);
-            vscode.window.showErrorMessage(`Gengora: ${msg}`);
-            statusBar.text = Constants.StatusBar.NO_GENERATOR;
-            return;
+        if (configuredProjectPath) {
+            log(LogLevel.Info, `Using configured generator project path: ${configuredProjectPath}`);
+        } else {
+            log(LogLevel.Info, 'Auto-discovering generator project via marker...');
         }
 
         // Find server DLL
@@ -134,24 +86,27 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         log(LogLevel.Info, `Server: ${serverPath}`);
-        log(LogLevel.Info, `Generator project: ${generatorRoot}`);
 
         // Start language server with environment variables for configuration
         const isDll = serverPath.toLowerCase().endsWith('.dll');
         const serverEnv = {
             ...process.env,
-            GENERATOR_FOLDER_PATH: configuredGeneratorPath,
             ...(configuredProjectPath && { GENERATOR_PROJECT_PATH: configuredProjectPath })
         };
         
         const serverOptions = isDll 
             ? { 
                 command: 'dotnet', 
-                args: [serverPath, Constants.CliArgs.WORKSPACE_ROOT, generatorRoot], 
+                args: [serverPath, Constants.CliArgs.WORKSPACE_ROOT, workspaceRoot], 
                 transport: TransportKind.stdio,
                 options: { env: serverEnv }
             }
-            : { command: serverPath, args: [generatorRoot], transport: TransportKind.stdio };
+            : { 
+                command: serverPath, 
+                args: [Constants.CliArgs.WORKSPACE_ROOT, workspaceRoot], 
+                transport: TransportKind.stdio,
+                options: { env: serverEnv }
+            };
 
         const clientOptions = {
             documentSelector: [{ scheme: 'file' }],
@@ -209,33 +164,8 @@ export async function activate(context: vscode.ExtensionContext) {
         // Dispose client on deactivation
         context.subscriptions.push({ dispose: () => client?.stop() });
 
-        // File watchers - watch only the generator folder
-        const ignorePatterns = config.get<string[]>('ignorePatterns') || [...Constants.Defaults.IGNORE_PATTERNS];
-        const csWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, Constants.FilePatterns.CSHARP));
-        const csprojWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(generatorRoot, Constants.FilePatterns.CSPROJ));
-
-        const forwardChange = (uri: vscode.Uri, type: number) => {
-            if (!client) return;
-            
-            if (shouldIgnorePath(uri.fsPath, generatorRoot, ignorePatterns)) {
-                log(LogLevel.Debug, `Ignored: ${path.relative(generatorRoot, uri.fsPath)}`);
-                return;
-            }
-
-            log(LogLevel.Debug, `File changed: ${path.relative(generatorRoot, uri.fsPath)}`);
-            client.sendNotification(Constants.Methods.WORKSPACE_DID_CHANGE_WATCHED_FILES, { 
-                changes: [{ uri: uri.toString(), type }] 
-            });
-        };
-
-        csWatcher.onDidChange((uri) => forwardChange(uri, Constants.FileChangeType.CHANGED));
-        csWatcher.onDidCreate((uri) => forwardChange(uri, Constants.FileChangeType.CREATED));
-        csWatcher.onDidDelete((uri) => forwardChange(uri, Constants.FileChangeType.DELETED));
-        csprojWatcher.onDidChange((uri) => forwardChange(uri, Constants.FileChangeType.CHANGED));
-        csprojWatcher.onDidCreate((uri) => forwardChange(uri, Constants.FileChangeType.CREATED));
-        csprojWatcher.onDidDelete((uri) => forwardChange(uri, Constants.FileChangeType.DELETED));
-
-        context.subscriptions.push(csWatcher, csprojWatcher);
+        // Note: File watching is now handled by the server based on observation modes
+        // The server will dynamically watch files based on the discovered generator project
 
         // Commands
         context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {

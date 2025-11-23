@@ -59,7 +59,6 @@ export const Build = {
  * Default configuration values
  */
 export const Defaults = {
-    GENERATOR_FOLDER_PATH: 'Gengora',
     LOG_LEVEL: 'info',
     AUTO_RUN_ON_COMPILE_SUCCESS: true,
     AUTO_START_DELAY_MS: 500,
@@ -113,8 +112,8 @@ export const StatusBar = {
  */
 export const ConfigKeys = {
     SERVER_PATH: 'gengora.serverPath',
-    GENERATOR_FOLDER_PATH: 'gengora.generatorFolderPath',
-    IGNORE_PATTERNS: 'gengora.ignorePatterns',
+    GENERATOR_PROJECT_PATH: 'gengora.generatorProjectPath',
+    EXCLUDE_PATTERNS: 'gengora.excludePatterns',
     AUTO_RUN_ON_COMPILE_SUCCESS: 'gengora.autoRunOnCompileSuccess',
     LOG_LEVEL: 'gengora.logLevel',
 } as const;

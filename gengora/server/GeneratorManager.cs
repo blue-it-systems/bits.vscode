@@ -43,9 +43,8 @@ public class GeneratorManager(string workspaceRoot)
     {
         await this.EnsureMSBuildAsync();
 
-        // Priority 1: User-specified path (GENERATOR_PROJECT_PATH or GENERATOR_FOLDER_PATH)
+        // Priority 1: User-specified path (GENERATOR_PROJECT_PATH)
         var envProjectPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_PROJECT_PATH);
-        var envFolderPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_FOLDER_PATH);
 
         // Try specific .csproj file first
         if (!string.IsNullOrEmpty(envProjectPath))
@@ -68,27 +67,6 @@ public class GeneratorManager(string workspaceRoot)
             if (Directory.Exists(projectPath))
             {
                 var csprojs = Directory.GetFiles(projectPath, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.TopDirectoryOnly);
-                foreach (var csproj in csprojs)
-                {
-                    if (await this.IsGeneratorProjectAsync(csproj, ct))
-                    {
-                        this._GeneratorProjectPath = csproj;
-                        return true;
-                    }
-                }
-            }
-        }
-
-        // Try folder path
-        if (!string.IsNullOrEmpty(envFolderPath))
-        {
-            var folderPath = Path.IsPathRooted(envFolderPath) 
-                ? envFolderPath 
-                : Path.Combine(this._WorkspaceRoot, envFolderPath);
-            
-            if (Directory.Exists(folderPath))
-            {
-                var csprojs = Directory.GetFiles(folderPath, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.TopDirectoryOnly);
                 foreach (var csproj in csprojs)
                 {
                     if (await this.IsGeneratorProjectAsync(csproj, ct))

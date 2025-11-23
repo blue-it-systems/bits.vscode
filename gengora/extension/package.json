@@ -48,16 +48,10 @@
           "description": "Optional explicit path to the compiled LSP server DLL (dotnet). Leave empty for auto-discovery.",
           "scope": "window"
         },
-        "gengora.generatorFolderPath": {
-          "type": "string",
-          "default": "Gengora",
-          "description": "Folder name or path containing the generator .csproj project (case-sensitive). Must contain a .csproj file.",
-          "scope": "window"
-        },
         "gengora.generatorProjectPath": {
           "type": "string",
           "default": "",
-          "description": "Optional: Full path to a specific .csproj file or folder containing the generator project. Overrides generatorFolderPath if set. Can be absolute or relative to workspace root.",
+          "description": "Optional: Full path to a specific .csproj file or folder containing the generator project. If not set, auto-discovers project with <IsGeneratorProject>true</IsGeneratorProject> marker. Can be absolute or relative to workspace root.",
           "scope": "window"
         },
         "gengora.excludePatterns": {
@@ -68,7 +62,7 @@
             "**/.vscode/**",
             "**/GeneratedProject-*/**"
           ],
-          "description": "Glob patterns for files/folders to exclude from file watching. Paths are relative to the generator project folder (gengora.generatorFolderPath).",
+          "description": "Glob patterns for files/folders to exclude from file watching. Paths are relative to the discovered generator project folder.",
           "items": {
             "type": "string"
           },
