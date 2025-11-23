@@ -1,0 +1,27 @@
+### Workspace-level git ignore for GeneratorTests
+
+# macOS
+.DS_Store
+
+# dotnet build artifacts
+**/bin/
+**/obj/
+
+# VS Code
+.vscode/.generator/out/
+.vscode/.generator/
+.vscode-test/
+
+# Node
+node_modules/
+**/node_modules/
+
+# Extension build outputs
+extension/out/
+extension/.vscode-test/
+
+# Generated projects created by the generator during tests
+GeneratedProject-*/
+
+# Logs
+*.log

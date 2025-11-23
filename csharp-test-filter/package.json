@@ -10,6 +10,15 @@
     "email": "github.bits.vscode@it-blue.com",
     "url": "https://it-blue.com"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blue-it-systems/bits.vscode.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/blue-it-systems/bits.vscode/issues"
+  },
+  "homepage": "https://github.com/blue-it-systems/bits.vscode#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -77,14 +86,5 @@
     "typescript": "~5.5.0",
     "@vscode/test-electron": "^2.3.8",
     "@vscode/vsce": "^3.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/blue-it-systems/bits.vscode.git"
-  },
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/blue-it-systems/bits.vscode/issues"
-  },
-  "homepage": "https://github.com/blue-it-systems/bits.vscode#readme"
+  }
 }

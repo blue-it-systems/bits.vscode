@@ -33,6 +33,39 @@
       "presentation": {
         "reveal": "never"
       }
+    },
+    {
+      "label": "dotnet: build gengora server",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/gengora/server"],
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": ["$msCompile"],
+      "options": { "cwd": "${workspaceFolder}/gengora/server" }
+    },
+    {
+      "label": "dotnet: build gengora generator",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/gengora/Gengora"],
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": ["$msCompile"],
+      "options": { "cwd": "${workspaceFolder}/gengora/Gengora" }
+    },
+    {
+      "label": "npm: build gengora extension",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build"],
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": ["$tsc"],
+      "options": { "cwd": "${workspaceFolder}/gengora/extension" }
+    },
+    {
+      "label": "build-gengora-all",
+      "dependsOn": ["dotnet: build gengora server", "dotnet: build gengora generator", "npm: build gengora extension"],
+      "dependsOrder": "sequence",
+      "presentation": { "reveal": "always", "panel": "shared" }
     }
   ]
 }

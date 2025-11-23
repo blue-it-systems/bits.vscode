@@ -26,6 +26,36 @@
         "${workspaceFolder}/csharp-test-filter/out/test/**/*.js"
       ],
       "preLaunchTask": "${defaultBuildTask}"
+    },
+    {
+      "name": "Run Gengora Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/gengora/extension",
+        "${workspaceFolder}/gengora"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/gengora/extension/out/**/*.js"
+      ],
+      "preLaunchTask": "build-gengora-all"
+    },
+    {
+      "name": "Attach to Gengora Generator",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "justMyCode": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Gengora Extension + Attach Debugger",
+      "configurations": [
+        "Run Gengora Extension",
+        "Attach to Gengora Generator"
+      ]
     }
   ]
 }

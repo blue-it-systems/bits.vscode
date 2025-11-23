@@ -1,0 +1,10 @@
+# Ignore source files and dev dependencies when packaging
+src/
+tsconfig.json
+node_modules/
+.gitignore
+*.map
+*.ts
+!out/**/*.js
+.vscode-test/
+.vscodeignore

@@ -1,0 +1,120 @@
+{
+  "name": "bits.gengora",
+  "displayName": "Gengora - Live Code Generator",
+  "description": "Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly.",
+  "version": "1.0.0",
+  "publisher": "bits",
+  "author": {
+    "name": "Blue IT Systems GmbH",
+    "email": "github.bits.vscode@it-blue.com",
+    "url": "https://it-blue.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blue-it-systems/bits.vscode.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/blue-it-systems/bits.vscode/issues"
+  },
+  "homepage": "https://github.com/blue-it-systems/bits.vscode#readme",
+  "keywords": [
+    "code generation",
+    "generator",
+    "hot reload",
+    "live coding",
+    "code-gen",
+    "dotnet"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Gengora",
+      "properties": {
+        "gengora.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional explicit path to the compiled LSP server DLL (dotnet). Leave empty for auto-discovery.",
+          "scope": "window"
+        },
+        "gengora.generatorFolderPath": {
+          "type": "string",
+          "default": "Gengora",
+          "description": "Folder name or path containing the generator .csproj project (case-sensitive). Must contain a .csproj file.",
+          "scope": "window"
+        },
+        "gengora.ignorePatterns": {
+          "type": "array",
+          "default": [
+            "**/bin/**",
+            "**/obj/**",
+            "**/.vscode/**",
+            "**/GeneratedProject-*/**"
+          ],
+          "description": "Glob patterns for files/folders to ignore within the generator folder (relative paths).",
+          "items": {
+            "type": "string"
+          },
+          "scope": "window"
+        },
+        "gengora.autoRunOnCompileSuccess": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the generator after successful compilation.",
+          "scope": "window"
+        },
+        "gengora.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "error",
+            "warning",
+            "info",
+            "debug"
+          ],
+          "description": "Logging verbosity level for the Gengora output channel.",
+          "scope": "window"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "gengora.run",
+        "title": "Gengora: Start Generator"
+      },
+      {
+        "command": "gengora.showOutput",
+        "title": "Gengora: Show Output"
+      },
+      {
+        "command": "gengora.stop",
+        "title": "Gengora: Stop Generator"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/minimatch": "^5.1.2",
+    "minimatch": "^10.1.1",
+    "vscode-languageclient": "^8.0.0"
+  }
+}
