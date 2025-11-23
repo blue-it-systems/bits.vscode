@@ -8,3 +8,7 @@ node_modules/
 !out/**/*.js
 .vscode-test/
 .vscodeignore
+scripts/
+
+# Include bundled server
+!bin/**

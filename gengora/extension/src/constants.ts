@@ -52,6 +52,7 @@ export const States = {
 export const Build = {
     TARGET_FRAMEWORK: 'net8.0',
     DEBUG_CONFIG: 'Debug',
+    RELEASE_CONFIG: 'Release',
     SERVER_DLL_NAME: 'BITS.Gengora.Server.dll',
 } as const;
 

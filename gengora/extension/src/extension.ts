@@ -71,14 +71,35 @@ export async function activate(context: vscode.ExtensionContext) {
             log(LogLevel.Info, 'Auto-discovering generator project via marker...');
         }
 
-        // Find server DLL
+        // Find server DLL - check bundled location first, then dev location
         let serverPath = config.get<string>('serverPath') || '';
         if (!serverPath) {
-            serverPath = path.join(context.extensionPath, '..', 'server', 'bin', Constants.Build.DEBUG_CONFIG, Constants.Build.TARGET_FRAMEWORK, Constants.Build.SERVER_DLL_NAME);
+            // Try bundled location (for published extension)
+            const bundledPath = path.join(context.extensionPath, 'bin', Constants.Build.TARGET_FRAMEWORK, Constants.Build.SERVER_DLL_NAME);
+            // Try dev location (for development)
+            const devPath = path.join(context.extensionPath, '..', 'server', 'bin', Constants.Build.RELEASE_CONFIG, Constants.Build.TARGET_FRAMEWORK, Constants.Build.SERVER_DLL_NAME);
+            const debugPath = path.join(context.extensionPath, '..', 'server', 'bin', Constants.Build.DEBUG_CONFIG, Constants.Build.TARGET_FRAMEWORK, Constants.Build.SERVER_DLL_NAME);
+            
+            if (fs.existsSync(bundledPath)) {
+                serverPath = bundledPath;
+                log(LogLevel.Debug, 'Using bundled server');
+            } else if (fs.existsSync(devPath)) {
+                serverPath = devPath;
+                log(LogLevel.Debug, 'Using dev (Release) server');
+            } else if (fs.existsSync(debugPath)) {
+                serverPath = debugPath;
+                log(LogLevel.Debug, 'Using dev (Debug) server');
+            } else {
+                const msg = `Server not found. Tried:\n- ${bundledPath}\n- ${devPath}\n- ${debugPath}`;
+                log(LogLevel.Error, msg);
+                vscode.window.showErrorMessage('Gengora: Server DLL not found. Please reinstall the extension.');
+                statusBar.text = Constants.StatusBar.SERVER_MISSING;
+                return;
+            }
         }
 
         if (!fs.existsSync(serverPath)) {
-            const msg = `Server not found at ${serverPath}. Please build the server project.`;
+            const msg = `Server not found at configured path: ${serverPath}`;
             log(LogLevel.Error, msg);
             vscode.window.showErrorMessage(msg);
             statusBar.text = Constants.StatusBar.SERVER_MISSING;
