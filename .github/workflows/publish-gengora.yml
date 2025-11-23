@@ -1,49 +1,18 @@
-name: CI
+name: Publish Gengora Extension
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags:
+      - 'gengora-v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to marketplace (true/false)'
+        required: true
+        default: 'false'
 
 jobs:
-  test-csharp-test-filter:
-    name: Build C# Test Filter
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: csharp-test-filter
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile extension
-        run: npm run compile
-
-      - name: Lint code
-        run: npm run lint
-
-      - name: Package extension
-        run: npx @vscode/vsce package
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: csharp-test-filter-vsix-${{ github.sha }}
-          path: 'csharp-test-filter/*.vsix'
-          retention-days: 7
-
-  test-gengora:
-    name: Build Gengora
+  build-and-publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -88,7 +57,23 @@ jobs:
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gengora-vsix-${{ github.sha }}
+          name: gengora-vsix
           path: 'gengora/extension/*.vsix'
-          retention-days: 7
+          retention-days: 30
 
+      - name: Publish to VS Code Marketplace
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        run: |
+          cd gengora/extension
+          npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: gengora/extension/*.vsix
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -44,16 +44,13 @@ internal class Program
                 (
                     async (server, request, cancellationToken) =>
                     {
-                        // Log initialization
-                        await Console.Error.WriteLineAsync($"[Gengora Server] Initializing for workspace: {workspaceRoot}");
+                        // Initialization (logging disabled - only warnings/errors)
                     }
                 )
                 .OnInitialized
                 (
                     async (server, request, response, cancellationToken) =>
                     {
-                        await Console.Error.WriteLineAsync("[Gengora Server] Initialized successfully");
-                        
                         // Start generator discovery and observation
                         var generatorService = server.Services.GetRequiredService<IGeneratorService>();
                         await generatorService.StartGeneratorAsync(cancellationToken);

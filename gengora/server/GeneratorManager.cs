@@ -79,7 +79,6 @@ public class GeneratorManager(string workspaceRoot)
         }
 
         // Priority 2: Auto-discovery - scan workspace for marker
-        await Console.Error.WriteLineAsync("[GeneratorManager] Auto-discovering generator project...");
         
         var allCsprojs = Directory.GetFiles(this._WorkspaceRoot, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.AllDirectories);
         
@@ -94,13 +93,12 @@ public class GeneratorManager(string workspaceRoot)
 
             if (await this.IsGeneratorProjectAsync(csproj, ct))
             {
-                await Console.Error.WriteLineAsync($"[GeneratorManager] Found generator project: {csproj}");
                 this._GeneratorProjectPath = csproj;
                 return true;
             }
         }
 
-        await Console.Error.WriteLineAsync("[GeneratorManager] No generator project found with marker");
+        await Console.Error.WriteLineAsync("[Gengora] No generator project found with marker");
         return false;
     }
 
@@ -164,10 +162,14 @@ public class GeneratorManager(string workspaceRoot)
         await proc.WaitForExitAsync(ct);
 
         var full = output.ToString();
+        var exitCode = proc.ExitCode;
 
-        // debug: log raw build output so it's visible in server stderr
-        await Console.Error.WriteLineAsync("[GeneratorManager] build output:\n" + full);
-        await Console.Error.WriteLineAsync("[GeneratorManager] exit code: " + proc.ExitCode);
+        // Only log on build failure
+        if (exitCode != 0)
+        {
+            await Console.Error.WriteLineAsync($"[Gengora ERROR] Build failed with exit code {exitCode}");
+            await Console.Error.WriteLineAsync($"[Gengora ERROR] Output:\n{full}");
+        }
 
         // Parse MSBuild-style diagnostics like: /path/File.cs(12,34): error CS1002: ; expected
         var lines = full.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
@@ -200,7 +202,7 @@ public class GeneratorManager(string workspaceRoot)
             }
         }
 
-        result.Success = proc.ExitCode == 0;
+        result.Success = exitCode == 0;
 
         if (result.Success)
         {

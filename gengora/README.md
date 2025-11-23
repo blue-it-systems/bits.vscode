@@ -5,298 +5,370 @@
 Gengora is a Visual Studio Code extension that watches your generator project and automatically recompiles and reruns it whenever you make changes. Perfect for iterative development of code generators, scaffolding tools, and template processors.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/bits.gengora)](https://marketplace.visualstudio.com/items?itemName=bits.gengora)
 
 ---
 
-## Features
+## 🚀 Features
 
 - 🔄 **Hot Reload**: Automatically recompile and restart your generator on file changes
-- 🎯 **Intelligent Watching**: Only watches your generator project, ignoring generated output
-- 📊 **Live Status**: Real-time status bar indicator showing generator state
-- 🔧 **Configurable**: Customize folder paths, ignore patterns, and log levels
-- 🚀 **Auto-Start**: Optional automatic startup on workspace open
-- 📝 **Rich Logging**: Configurable log levels (error, warning, info, debug)
+- 🎯 **Smart Discovery**: Auto-detects generator projects using `<IsGeneratorProject>true</IsGeneratorProject>` marker
+- 📊 **Live Status**: Real-time status bar showing compilation and execution state
+- 🔧 **Configurable**: Customize ignore patterns and log levels
+- 📝 **Structured Output**: JSON-based protocol for generator events and diagnostics
+- 🛡️ **Isolated Builds**: Generated code kept separate to avoid compilation conflicts
 
 ---
 
-## Architecture
+## 📦 Installation
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         VS Code Extension Host                       │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                     Gengora Extension                          │  │
-│  │  • File Watchers (.cs, .csproj in generator folder)          │  │
-│  │  • Configuration Management                                    │  │
-│  │  • Status Bar & Output Channel                                │  │
-│  └─────────────────┬─────────────────────────────────────────────┘  │
-│                    │ LSP Protocol (stdio)                            │
-│                    ↓                                                 │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │              LSP Server (GeneratorServer.dll)                 │  │
-│  │  • Receives file change notifications                         │  │
-│  │  • Runs `dotnet build` on Generator project                   │  │
-│  │  • Copies built assembly to .vscode/.generator/out/           │  │
-│  │  • Spawns generator process                                   │  │
-│  │  • Forwards stdout/stderr and structured JSON events          │  │
-│  └─────────────────┬─────────────────────────────────────────────┘  │
-│                    │ Process spawn & stdio                           │
-│                    ↓                                                 │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │           Your Generator (Gengora/Generator.dll)              │  │
-│  │  • Emits JSON handshake: generator/hello                      │  │
-│  │  • Generates code/files in workspace                          │  │
-│  │  • Emits progress events: generator/generated                 │  │
-│  │  • Writes to stdout/stderr for logging                        │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+### From VS Code Marketplace
+1. Open VS Code
+2. Press `Ctrl+P` / `Cmd+P`
+3. Type: `ext install bits.gengora`
+4. Press Enter
 
-File change detected → Extension notifies server → Server builds & runs
-→ Generator executes → Output visible in VS Code
+### From VSIX
+1. Download the latest `.vsix` from [Releases](https://github.com/blue-it-systems/bits.vscode/releases)
+2. In VS Code: `Extensions` → `...` → `Install from VSIX...`
+
+---
+
+## 🏁 Quick Start
+
+### 1. Create Your Generator Project
+
+```bash
+mkdir MyGenerator
+cd MyGenerator
+dotnet new console
 ```
 
+### 2. Mark as Generator Project
+
+Add this to your `.csproj`:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsGeneratorProject>true</IsGeneratorProject>
+  </PropertyGroup>
+</Project>
+```
+
+### 3. Write Your Generator
+
+**Program.cs**:
+```csharp
+using System;
+using System.IO;
+using System.Text.Json;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        // 1. Send handshake
+        var hello = new
+        {
+            method = "generator/hello",
+            @params = new
+            {
+                capabilities = new
+                {
+                    publishDiagnostics = false,
+                    watchMode = false
+                }
+            }
+        };
+        Console.WriteLine(JsonSerializer.Serialize(hello));
+
+        // 2. Generate your code
+        var outputDir = Path.Combine(
+            Directory.GetParent(Directory.GetCurrentDirectory()).Parent.FullName,
+            "gengora-output",
+            "GeneratedProject-" + DateTime.UtcNow.ToString("yyyyMMddHHmm")
+        );
+        
+        Directory.CreateDirectory(outputDir);
+        var generatedFile = Path.Combine(outputDir, "Generated.cs");
+        
+        File.WriteAllText(generatedFile, @"
+public class GeneratedClass
+{
+    public string Message => ""Hello from Generator!"";
+}");
+
+        // 3. Notify extension
+        var generated = new
+        {
+            method = "generator/generated",
+            @params = new
+            {
+                project = outputDir,
+                created = new[] { generatedFile }
+            }
+        };
+        Console.WriteLine(JsonSerializer.Serialize(generated));
+    }
+}
+```
+
+### 4. Open in VS Code
+
+```bash
+code .
+```
+
+Gengora will:
+✅ Auto-detect your generator project  
+✅ Build it automatically  
+✅ Run your generator  
+✅ Watch for changes and hot-reload  
+
 ---
 
-## Getting Started
+## 📖 How It Works
 
-### Prerequisites
+### Architecture
 
-- Visual Studio Code 1.80.0 or higher
-- .NET 8.0 SDK or higher
-- A C# generator project with a `.csproj` file
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VS Code Extension                         │
+│  • File Watchers (*.cs, *.csproj)                          │
+│  • Status Bar & Output Channel                             │
+└────────────┬────────────────────────────────────────────────┘
+             │ LSP Protocol
+             ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   LSP Server (.NET 8.0)                      │
+│  • Observes generator project folder                        │
+│  • Runs: dotnet build --configuration Debug                │
+│  • Copies to: .vscode/.generator/out/                      │
+│  • Spawns generator process with workspace as working dir  │
+└────────────┬────────────────────────────────────────────────┘
+             │ Process spawn
+             ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Your Generator Process                          │
+│  • Runs in workspace root directory                         │
+│  • Generates files (typically to ../gengora-output/)       │
+│  • Sends JSON events to stdout                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Installation
+### Observation Modes
 
-1. Install the extension from the VS Code Marketplace
-2. Or build from source:
-   ```bash
-   cd extension
-   npm install
-   npm run build
-   ```
+Gengora uses a three-level observation system:
 
-### Quick Start
+1. **GlobalScan**: Initial workspace scan to find generator project
+2. **MinimalObservation**: Watches only `.csproj` file (when marker is absent)
+3. **FullObservation**: Watches all files in generator folder (when marker is present)
 
-1. **Create your generator project** and mark it with the Gengora marker:
-   ```bash
-   mkdir test-workspace
-   cd test-workspace
-   dotnet new console
-   ```
+### File Watching
 
-2. **Add the marker to your `.csproj`** file:
-   ```xml
-   <Project Sdk="Microsoft.NET.Sdk">
-     <PropertyGroup>
-       <IsGeneratorProject>true</IsGeneratorProject>
-       <TargetFramework>net8.0</TargetFramework>
-     </PropertyGroup>
-   </Project>
-   ```
+The extension automatically ignores:
+- `/bin/` - Build outputs
+- `/obj/` - Intermediate build files
+- `/node_modules/` - Node dependencies
+- `/.git/` - Git metadata
+- `/.vscode/.generator/` - Bundled generator assemblies
+- `/gengora-output/` - Generated output (configurable)
 
-3. **Open your workspace in VS Code**
-   ```bash
-   code .
-   ```
+You can add custom ignore patterns:
 
-4. **The extension auto-activates** and discovers your generator project via the marker
-
-5. **Make changes** to your `.cs` files - Gengora automatically rebuilds and reruns
+```json
+{
+  "gengora.fileWatchIgnorePatterns": [
+    "/MyCustomFolder/",
+    "*.tmp"
+  ]
+}
+```
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-Access settings via `File > Preferences > Settings` → search for "Gengora"
-
-### Available Settings
+### Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `gengora.generatorProjectPath` | string | `""` | Optional: Full path to `.csproj` or folder. Leave empty for auto-discovery via `<IsGeneratorProject>true</IsGeneratorProject>` marker |
-| `gengora.excludePatterns` | array | `["**/bin/**", "**/obj/**", "**/.vscode/**"]` | Glob patterns for files/folders to exclude from file watching |
-| `gengora.autoRunOnCompileSuccess` | boolean | `true` | Automatically start the generator after successful compilation |
-| `gengora.logLevel` | string | `"info"` | Logging verbosity: `error`, `warning`, `info`, or `debug` |
-| `gengora.serverPath` | string | `""` | Optional explicit path to the LSP server DLL (leave empty for auto-discovery) |
+| `gengora.generatorProjectPath` | `string` | `""` | Path to generator .csproj (auto-detected if empty) |
+| `gengora.serverPath` | `string` | `""` | Custom LSP server path (for development) |
+| `gengora.fileWatchIgnorePatterns` | `string[]` | `[]` | Additional glob patterns to ignore |
+| `gengora.autoRunOnCompileSuccess` | `boolean` | `false` | Auto-start on compile (not recommended) |
+| `gengora.logLevel` | `string` | `"info"` | Log verbosity: `error`, `warning`, `info`, `debug` |
 
-### Example Configuration
+### Example workspace settings.json
 
 ```json
 {
-  "gengora.logLevel": "debug",
-  "gengora.excludePatterns": [
-    "**/bin/**",
-    "**/obj/**",
-    "**/output/**"
-  ],
-  "gengora.autoRunOnCompileSuccess": true
-}
-```
-
-### Marker-Based Discovery
-
-Gengora automatically discovers your generator project by scanning for the `<IsGeneratorProject>true</IsGeneratorProject>` marker in `.csproj` files. This eliminates the need for manual configuration.
-
-**To mark a project as a generator:**
-```xml
-<PropertyGroup>
-  <IsGeneratorProject>true</IsGeneratorProject>
-</PropertyGroup>
-```
-
-**To override auto-discovery** (optional), set `gengora.generatorProjectPath`:
-```json
-{
-  "gengora.generatorProjectPath": "/absolute/path/to/Generator.csproj"
+  "gengora.generatorProjectPath": "MyGenerator",
+  "gengora.logLevel": "warning",
+  "gengora.fileWatchIgnorePatterns": [
+    "/temp/",
+    "*.bak"
+  ]
 }
 ```
 
 ---
 
-## Commands
+## 🔌 Generator Protocol
 
-Access via Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
+Generators communicate with Gengora via JSON messages on stdout:
 
-- **Gengora: Start Generator** - Manually start the generator
-- **Gengora: Stop Generator** - Stop the running generator
-- **Gengora: Show Output** - Display the Gengora output channel
+### 1. Handshake (Required)
 
----
-
-## Generator Project Requirements
-
-Your generator project must:
-
-1. ✅ Be a valid .NET project with a `.csproj` file
-2. ✅ Be located in the configured folder (default: `Gengora`)
-3. ✅ Build successfully with `dotnet build`
-
-### Generator Protocol (Optional)
-
-For enhanced integration, your generator can emit JSON messages to stdout:
-
-#### Handshake Message
 ```json
 {
   "method": "generator/hello",
   "params": {
     "capabilities": {
       "publishDiagnostics": false,
-      "watchMode": false
+      "watchMode": false,
+      "watchGlobs": ["**/*"],
+      "watchDebounceMs": 500
     }
   }
 }
 ```
 
-#### Generation Complete Message
+### 2. Progress Events
+
 ```json
 {
   "method": "generator/generated",
   "params": {
-    "project": "/path/to/generated/folder",
-    "created": ["/path/to/file1.cs", "/path/to/file2.cs"]
+    "project": "/path/to/generated/project",
+    "created": [
+      "/path/to/File1.cs",
+      "/path/to/File2.cs"
+    ]
+  }
+}
+```
+
+### 3. Error Reporting
+
+```json
+{
+  "method": "generator/error",
+  "params": {
+    "message": "Something went wrong",
+    "stack": "Stack trace here..."
   }
 }
 ```
 
 ---
 
-## Troubleshooting
+## 🎯 Best Practices
 
-### Generator not starting
+### ✅ Do
 
-1. Check the **Gengora output panel** for errors
-2. Verify your generator folder contains a `.csproj` file
-3. Ensure .NET SDK is installed: `dotnet --version`
-4. Check the status bar for error messages
+- **Use the marker**: Add `<IsGeneratorProject>true</IsGeneratorProject>` to enable full observation
+- **Generate outside**: Create files in `../gengora-output/` or another parent directory
+- **Send handshake**: Always emit `generator/hello` JSON first
+- **Structured events**: Use JSON for `generator/generated` to track created files
+- **Error handling**: Wrap your Main() in try-catch and emit `generator/error` JSON
 
-### Endless recompilation
+### ❌ Don't
 
-1. Add generated output folders to `gengora.ignorePatterns`
-2. Ensure `bin/` and `obj/` are ignored (default)
-3. Set log level to `debug` to see which files trigger rebuilds
+- **Don't generate in same folder**: Avoid creating files inside your generator project (causes compilation conflicts)
+- **Don't ignore errors**: Always handle exceptions and report them
+- **Don't use blocking I/O**: Avoid long-running processes without progress updates
+- **Don't enable auto-start**: Server already initializes automatically
 
-### Extension not activating
+### Example .gitignore
 
-1. Check `Extensions` view for error badges
-2. Open Developer Tools: `Help > Toggle Developer Tools`
-3. Look for errors in the Console tab
+```gitignore
+# Generator outputs
+gengora-output/
 
----
+# VS Code
+.vscode/.generator/
 
-## Development
-
-### Building the Server
-
-```bash
-cd server
-dotnet build
+# .NET
+bin/
+obj/
+*.dll
+*.pdb
 ```
 
-### Building the Extension
+---
 
-```bash
-cd extension
-npm install
-npm run build
-```
+## 🛠️ Troubleshooting
 
-### Debugging
+### Generator not discovered?
 
-1. Open the repository in VS Code
-2. Press `F5` to launch the Extension Development Host
-3. The extension will activate in the new window
+1. Check `.csproj` has `<IsGeneratorProject>true</IsGeneratorProject>`
+2. Check Output → Gengora for discovery logs
+3. Try manual configuration: `"gengora.generatorProjectPath": "path/to/project.csproj"`
+
+### Files not triggering rebuild?
+
+1. Check if files are in ignore patterns
+2. Verify observation mode in logs (should be `FullObservation`)
+3. Check file extension (must be `.cs`, `.csproj`, or `.json`)
+
+### Build failures?
+
+1. Check Output → Gengora for build errors
+2. Verify .NET SDK version: `dotnet --version` (needs 8.0+)
+3. Try manual build: `dotnet build YourGenerator.csproj`
+
+### Generator output not appearing?
+
+1. Ensure generator sends `generator/hello` JSON first
+2. Check working directory is correct (should be workspace root)
+3. Verify output path is outside generator project folder
 
 ---
 
-## Contributing
+## 📚 Examples
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
----
-
-## License
-
-MIT License
-
-Copyright (c) 2025 Blue IT Systems GmbH
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+See the `/gengora/test-workspace/` folder for a complete working example.
 
 ---
 
-## Author
+## 🤝 Contributing
 
-**Saqib Javed**  
-Blue IT Systems GmbH  
-📧 saqib.javed@blue-it.com
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ---
 
-## Changelog
+## 📄 License
 
-### 1.0.0 (2025-11-23)
+MIT License - see [LICENSE](../LICENSE) file
 
-- ✨ Initial release
-- 🔄 Hot reload support for generator projects
-- 🎯 Configurable generator folder path
-- 📝 Configurable log levels
-- 🚫 Configurable ignore patterns
-- 🚀 Auto-start on activation
-- 📊 Status bar integration
+---
+
+## 🔗 Links
+
+- [GitHub Repository](https://github.com/blue-it-systems/bits.vscode)
+- [Issue Tracker](https://github.com/blue-it-systems/bits.vscode/issues)
+- [Changelog](CHANGELOG.md)
+- [Blue IT Systems](https://it-blue.com)
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [OmniSharp Language Server Protocol](https://github.com/OmniSharp/csharp-language-server-protocol)
+- [VS Code Extension API](https://code.visualstudio.com/api)
+- [.NET SDK](https://dotnet.microsoft.com/)
+
+---
+
+**Made with ❤️ by Blue IT Systems GmbH**

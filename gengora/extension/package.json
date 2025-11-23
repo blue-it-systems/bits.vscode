@@ -2,7 +2,7 @@
   "name": "bits.gengora",
   "displayName": "Gengora - Live Code Generator",
   "description": "Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly.",
-  "version": "1.0.0",
+  "version": "0.1.4",
   "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",
@@ -24,10 +24,10 @@
     "hot reload",
     "live coding",
     "code-gen",
-    "dotnet"
+    "dotnet",
+    "gengora"
   ],
   "categories": [
-    "Programming Languages",
     "Other"
   ],
   "icon": "icon.png",

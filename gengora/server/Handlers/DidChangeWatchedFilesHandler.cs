@@ -44,7 +44,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
         // Subscribe to observation mode changes to re-register watchers
         this._ObservationManager.OnModeChanged += (oldMode, newMode) =>
         {
-            Console.Error.WriteLine($"[DidChangeWatchedFilesHandler] Observation mode changed: {oldMode} → {newMode}");
             // Note: Dynamic re-registration would require client.registerCapability
             // For now, we register broadly and filter in Handle()
         };
@@ -52,8 +51,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
 
     public override async Task<Unit> Handle(DidChangeWatchedFilesParams request, CancellationToken cancellationToken)
     {
-        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Received {request.Changes.Count()} file change(s), mode={this._ObservationManager.CurrentMode}");
-        
         // Filter changes based on current observation mode
         var relevantChanges = new List<FileEvent>();
         var projectFolder = this._ObservationManager.CurrentProjectFolder;
@@ -74,7 +71,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
             {
                 if (!string.IsNullOrEmpty(projectFolder) && !filePath.StartsWith(projectFolder, StringComparison.OrdinalIgnoreCase))
                 {
-                    await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Ignoring {filePath} (outside project folder)");
                     continue;
                 }
             }
@@ -84,11 +80,8 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
         
         if (relevantChanges.Count == 0)
         {
-            await Console.Error.WriteLineAsync("[DidChangeWatchedFilesHandler] No relevant changes after filtering");
             return Unit.Value;
         }
-        
-        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Processing {relevantChanges.Count} relevant change(s)");
         
         // Debounce file changes
         await (this._DebounceCts?.CancelAsync() ?? Task.CompletedTask);
@@ -104,7 +97,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
                 var filePath = change.Uri.GetFileSystemPath();
                 if (!string.IsNullOrEmpty(filePath))
                 {
-                    await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Processing: {filePath}");
                     await this._GeneratorService.HandleFileChangeAsync(filePath, cancellationToken);
                 }
             }
@@ -112,7 +104,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
         catch (OperationCanceledException)
         {
             // Debounced - ignore
-            await Console.Error.WriteLineAsync("[DidChangeWatchedFilesHandler] Debounced");
         }
 
         return Unit.Value;
@@ -155,8 +146,6 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
                 Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
             }
         };
-        
-        Console.Error.WriteLine($"[DidChangeWatchedFilesHandler] Registering {watchers.Count} broad watchers (filtering in Handle)");
         
         return new DidChangeWatchedFilesRegistrationOptions
         {

@@ -106,7 +106,7 @@ public class ProcessManager
                     // Ignore event handler failures
                 }
                 
-                await Console.Error.WriteLineAsync("[generator stdout] " + line);
+                await Console.Error.WriteLineAsync("[Gengora] " + line);
             }
 
             // drain error stream
@@ -126,12 +126,12 @@ public class ProcessManager
                     // Ignore event handler failures
                 }
                 
-                await Console.Error.WriteLineAsync("[generator stderr] " + line);
+                await Console.Error.WriteLineAsync("[Gengora ERROR] " + line);
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            await Console.Error.WriteLineAsync("PumpOutputAsync error: " + ex.Message);
+            await Console.Error.WriteLineAsync("[Gengora] PumpOutputAsync error: " + ex.Message);
         }
     }
 }

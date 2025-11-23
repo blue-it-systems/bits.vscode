@@ -60,8 +60,6 @@ public class GeneratorService : IGeneratorService
 
     private async Task HandleObservationModeChangedAsync(ObservationMode oldMode, ObservationMode newMode)
     {
-        await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode changed: {oldMode} → {newMode}");
-        
         // Upgrade: minimal → full (marker became true)
         if (oldMode == ObservationMode.MinimalObservation && newMode == ObservationMode.FullObservation)
         {
@@ -91,9 +89,7 @@ public class GeneratorService : IGeneratorService
 
         await this.SendStatusAsync(Constants.States.COMPILING, null, null, cancellationToken);
 
-        await Console.Error.WriteLineAsync("[GeneratorService] Calling FindAndOpenGeneratorProjectAsync...");
         var found = await this._GeneratorManager.FindAndOpenGeneratorProjectAsync(cancellationToken);
-        await Console.Error.WriteLineAsync($"[GeneratorService] FindAndOpenGeneratorProjectAsync returned: {found}");
         
         if (!found)
         {
@@ -110,9 +106,7 @@ public class GeneratorService : IGeneratorService
             await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
         }
 
-        await Console.Error.WriteLineAsync("[GeneratorService] Calling BuildGeneratorAsync...");
         var build = await this._GeneratorManager.BuildGeneratorAsync(cancellationToken);
-        await Console.Error.WriteLineAsync($"[GeneratorService] Build complete. Success={build.Success}, AssemblyPath={build.BuiltAssemblyPath}");
         
         if (!build.Success)
         {
@@ -125,11 +119,8 @@ public class GeneratorService : IGeneratorService
         // Publish any warnings
         await this.PublishBuildDiagnosticsAsync(build, cancellationToken);
 
-        await Console.Error.WriteLineAsync("[GeneratorService] Calling EmitGeneratorAssemblyAsync...");
         var outDir = Path.Combine(Directory.GetCurrentDirectory(), Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER, Constants.Directories.OUT_FOLDER);
-        await Console.Error.WriteLineAsync($"[GeneratorService] outDir={outDir}");
         var assemblyPath = await this._GeneratorManager.EmitGeneratorAssemblyAsync(build.BuiltAssemblyPath!, outDir, cancellationToken);
-        await Console.Error.WriteLineAsync($"[GeneratorService] EmitGeneratorAssemblyAsync returned: {assemblyPath}");
         
         if (assemblyPath == null)
         {
@@ -141,13 +132,9 @@ public class GeneratorService : IGeneratorService
         await this.SendStatusAsync(Constants.States.COMPILED, null, assemblyPath, cancellationToken);
 
         var workspaceRoot = Path.GetDirectoryName(this._GeneratorManager.GetCurrentProjectPath()) ?? Directory.GetCurrentDirectory();
-        await Console.Error.WriteLineAsync($"[GeneratorService] workspaceRoot={workspaceRoot}");
         
-        await Console.Error.WriteLineAsync("[GeneratorService] Stopping existing process...");
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
-        await Console.Error.WriteLineAsync($"[GeneratorService] Starting process: {assemblyPath}");
         await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken);
-        await Console.Error.WriteLineAsync("[GeneratorService] Process started successfully");
         
         await this.SendStatusAsync(Constants.States.RUNNING, null, assemblyPath, cancellationToken);
     }
@@ -192,7 +179,7 @@ public class GeneratorService : IGeneratorService
 
     public async Task SwitchProjectAsync(string projectPath, CancellationToken cancellationToken)
     {
-        await Console.Error.WriteLineAsync($"[GeneratorService] Switching to project: {projectPath}");
+        await Console.Error.WriteLineAsync($"[Gengora] Switching to project: {projectPath}");
         
         // Stop current generator
         await this.StopGeneratorAsync(cancellationToken);
@@ -278,7 +265,7 @@ public class GeneratorService : IGeneratorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"HandleGeneratorStdoutLine error: {ex.Message}");
+            Console.Error.WriteLine($"[Gengora] HandleGeneratorStdoutLine error: {ex.Message}");
         }
 
         // Fallback: send raw stdout
@@ -327,7 +314,7 @@ public class GeneratorService : IGeneratorService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Failed to parse generator capabilities: {ex.Message}");
+            Console.Error.WriteLine($"[Gengora] Failed to parse generator capabilities: {ex.Message}");
         }
     }
 

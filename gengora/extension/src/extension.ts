@@ -254,8 +254,8 @@ export async function activate(context: vscode.ExtensionContext) {
         // Auto-start if configured (NOTE: Server already auto-starts on initialization via OnInitialized)
         const autoRun = config.get<boolean>('autoRunOnCompileSuccess') ?? Constants.Defaults.AUTO_RUN_ON_COMPILE_SUCCESS;
         if (autoRun) {
-            log(LogLevel.Warning, 'Auto-start is enabled but server already auto-starts on initialization - this will cause double-build');
-            log(LogLevel.Info, 'Consider disabling gengora.autoRunOnCompileSuccess setting');
+            log(LogLevel.Info, 'Note: Auto-start setting is enabled but server already initializes automatically');
+            log(LogLevel.Info, 'Consider disabling gengora.autoRunOnCompileSuccess setting to avoid confusion');
             /* Disabled to prevent double-build - server already calls StartGeneratorAsync in OnInitialized
             try {
                 await new Promise(resolve => setTimeout(resolve, Constants.Defaults.AUTO_START_DELAY_MS));
