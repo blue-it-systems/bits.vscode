@@ -2,21 +2,93 @@ using BITS.Gengora.Server.Services;
 using MediatR;
 using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+using OmniSharp.Extensions.LanguageServer.Protocol.Server;
 using OmniSharp.Extensions.LanguageServer.Protocol.Workspace;
 
 namespace BITS.Gengora.Server.Handlers;
 
 /// <summary>
 /// Handles workspace/didChangeWatchedFiles notifications to trigger generator recompilation.
+/// Dynamically adjusts watch patterns based on ObservationManager state.
 /// </summary>
-public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : DidChangeWatchedFilesHandlerBase
+public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
 {
-    private readonly IGeneratorService _GeneratorService = generatorService;
+    private readonly IGeneratorService _GeneratorService;
+    private readonly ObservationManager _ObservationManager;
+    private readonly ILanguageServerFacade _LanguageServer;
     private CancellationTokenSource? _DebounceCts;
+    
+    // Standard ignore patterns for file watching
+    private static readonly string[] IgnorePatterns = new[]
+    {
+        "/bin/",
+        "/obj/",
+        "/node_modules/",
+        "/.git/",
+        "/.vs/",
+        "/.vscode/.generator/",
+        "/packages/",
+        "/.idea/",
+        "/gengora-output/"
+    };
+
+    public DidChangeWatchedFilesHandler(
+        IGeneratorService generatorService, 
+        ObservationManager observationManager,
+        ILanguageServerFacade languageServer)
+    {
+        this._GeneratorService = generatorService;
+        this._ObservationManager = observationManager;
+        this._LanguageServer = languageServer;
+        
+        // Subscribe to observation mode changes to re-register watchers
+        this._ObservationManager.OnModeChanged += (oldMode, newMode) =>
+        {
+            Console.Error.WriteLine($"[DidChangeWatchedFilesHandler] Observation mode changed: {oldMode} → {newMode}");
+            // Note: Dynamic re-registration would require client.registerCapability
+            // For now, we register broadly and filter in Handle()
+        };
+    }
 
     public override async Task<Unit> Handle(DidChangeWatchedFilesParams request, CancellationToken cancellationToken)
     {
-        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Received {request.Changes.Count()} file change(s)");
+        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Received {request.Changes.Count()} file change(s), mode={this._ObservationManager.CurrentMode}");
+        
+        // Filter changes based on current observation mode
+        var relevantChanges = new List<FileEvent>();
+        var projectFolder = this._ObservationManager.CurrentProjectFolder;
+        
+        foreach (var change in request.Changes)
+        {
+            var filePath = change.Uri.GetFileSystemPath();
+            if (string.IsNullOrEmpty(filePath)) continue;
+            
+            // Check ignore patterns first
+            if (this.ShouldIgnoreFile(filePath))
+            {
+                continue;
+            }
+            
+            // In FullObservation mode, only watch files in the generator project folder
+            if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation)
+            {
+                if (!string.IsNullOrEmpty(projectFolder) && !filePath.StartsWith(projectFolder, StringComparison.OrdinalIgnoreCase))
+                {
+                    await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Ignoring {filePath} (outside project folder)");
+                    continue;
+                }
+            }
+            
+            relevantChanges.Add(change);
+        }
+        
+        if (relevantChanges.Count == 0)
+        {
+            await Console.Error.WriteLineAsync("[DidChangeWatchedFilesHandler] No relevant changes after filtering");
+            return Unit.Value;
+        }
+        
+        await Console.Error.WriteLineAsync($"[DidChangeWatchedFilesHandler] Processing {relevantChanges.Count} relevant change(s)");
         
         // Debounce file changes
         await (this._DebounceCts?.CancelAsync() ?? Task.CompletedTask);
@@ -27,7 +99,7 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
             await Task.Delay(Constants.Timeouts.WATCH_DEBOUNCE_MS, this._DebounceCts.Token);
             
             // Handle file changes (check for marker changes, trigger recompilation if needed)
-            foreach (var change in request.Changes)
+            foreach (var change in relevantChanges)
             {
                 var filePath = change.Uri.GetFileSystemPath();
                 if (!string.IsNullOrEmpty(filePath))
@@ -45,24 +117,50 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
 
         return Unit.Value;
     }
+    
+    private bool ShouldIgnoreFile(string filePath)
+    {
+        var normalizedPath = filePath.Replace('\\', '/');
+        
+        foreach (var pattern in IgnorePatterns)
+        {
+            if (normalizedPath.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        
+        return false;
+    }
 
     protected override DidChangeWatchedFilesRegistrationOptions CreateRegistrationOptions(DidChangeWatchedFilesCapability capability, ClientCapabilities clientCapabilities)
     {
+        // Register broadly - we'll filter in Handle() based on current observation mode
+        // This avoids needing dynamic re-registration when mode changes
+        var watchers = new List<OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher>
+        {
+            new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
+            {
+                GlobPattern = new GlobPattern("**/*.csproj"),
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            },
+            new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
+            {
+                GlobPattern = new GlobPattern("**/*.cs"),
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            },
+            new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
+            {
+                GlobPattern = new GlobPattern("**/*.json"),
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            }
+        };
+        
+        Console.Error.WriteLine($"[DidChangeWatchedFilesHandler] Registering {watchers.Count} broad watchers (filtering in Handle)");
+        
         return new DidChangeWatchedFilesRegistrationOptions
         {
-            Watchers = new Container<OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher>
-            (
-                new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
-                {
-                    GlobPattern = new GlobPattern("**/*.cs"),
-                    Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
-                },
-                new OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher
-                {
-                    GlobPattern = new GlobPattern("**/*.csproj"),
-                    Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
-                }
-            )
+            Watchers = new Container<OmniSharp.Extensions.LanguageServer.Protocol.Models.FileSystemWatcher>(watchers)
         };
     }
 }

@@ -25,16 +25,19 @@ internal class Program
             }
         }
 
-        // Set minimum log level to Warning to suppress OmniSharp config warnings
+        // Set minimum log level to Warning for useful diagnostics
+        // Note: OmniSharp's ConfigurationProvider warning cannot be suppressed without setting to Error
+        // This warning is harmless - we don't use client-side configuration
         var minLogLevel = LogLevel.Warning;
 
         var server = await LanguageServer.From(options =>
             options
                 .WithInput(Console.OpenStandardInput())
                 .WithOutput(Console.OpenStandardOutput())
-                .ConfigureLogging(x => x.SetMinimumLevel(minLogLevel))
+                .ConfigureLogging(x => x
+                    .SetMinimumLevel(minLogLevel)
+                    .AddFilter("OmniSharp.Extensions.LanguageServer.Server.Configuration", LogLevel.Error)) // Suppress config warning
                 .WithServices(services => ConfigureServices(services, workspaceRoot))
-                .WithConfigurationSection("gengora")
                 .WithHandler<ExecuteCommandHandler>()
                 .WithHandler<DidChangeWatchedFilesHandler>()
                 .OnInitialize
@@ -50,6 +53,10 @@ internal class Program
                     async (server, request, response, cancellationToken) =>
                     {
                         await Console.Error.WriteLineAsync("[Gengora Server] Initialized successfully");
+                        
+                        // Start generator discovery and observation
+                        var generatorService = server.Services.GetRequiredService<IGeneratorService>();
+                        await generatorService.StartGeneratorAsync(cancellationToken);
                     }
                 )
         );

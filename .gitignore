@@ -66,3 +66,4 @@ coverage/
 
 # .NET test results
 **/TestResults/
+gengora-output

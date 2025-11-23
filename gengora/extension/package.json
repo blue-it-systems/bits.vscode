@@ -100,6 +100,15 @@
           ],
           "description": "Logging verbosity level for the Gengora output channel. Use 'info' or 'debug' for detailed output.",
           "scope": "window"
+        },
+        "gengora.fileWatchIgnorePatterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional file patterns to ignore when watching for changes (e.g., '/dist/', '*.tmp'). Standard patterns like '/bin/', '/obj/' are always ignored.",
+          "scope": "window"
         }
       }
     },

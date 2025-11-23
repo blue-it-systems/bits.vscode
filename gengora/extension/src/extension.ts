@@ -185,8 +185,42 @@ export async function activate(context: vscode.ExtensionContext) {
         // Dispose client on deactivation
         context.subscriptions.push({ dispose: () => client?.stop() });
 
-        // Note: File watching is now handled by the server based on observation modes
-        // The server will dynamically watch files based on the discovered generator project
+        // Create explicit file watchers and forward to server
+        // This ensures file watching works even if LSP dynamic registration isn't supported
+        log(LogLevel.Info, 'Creating file watchers for **.cs, **.csproj, **.json');
+        const csWatcher = vscode.workspace.createFileSystemWatcher('**/*.cs');
+        const csprojWatcher = vscode.workspace.createFileSystemWatcher('**/*.csproj');
+        const jsonWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
+
+        const forwardFileChange = (uri: vscode.Uri, type: number) => {
+            log(LogLevel.Info, `File change detected: ${uri.fsPath} (type=${type})`);
+            if (client && client.isRunning()) {
+                log(LogLevel.Info, `Forwarding to server...`);
+                client.sendNotification('workspace/didChangeWatchedFiles', {
+                    changes: [{ uri: uri.toString(), type }]
+                });
+            } else {
+                log(LogLevel.Warning, 'Client not running, cannot forward file change');
+            }
+        };
+
+        csWatcher.onDidChange((uri) => forwardFileChange(uri, 2)); // Changed
+        csWatcher.onDidCreate((uri) => forwardFileChange(uri, 1)); // Created
+        csWatcher.onDidDelete((uri) => forwardFileChange(uri, 3)); // Deleted
+
+        csprojWatcher.onDidChange((uri) => forwardFileChange(uri, 2));
+        csprojWatcher.onDidCreate((uri) => forwardFileChange(uri, 1));
+        csprojWatcher.onDidDelete((uri) => forwardFileChange(uri, 3));
+
+        jsonWatcher.onDidChange((uri) => forwardFileChange(uri, 2));
+        jsonWatcher.onDidCreate((uri) => forwardFileChange(uri, 1));
+        jsonWatcher.onDidDelete((uri) => forwardFileChange(uri, 3));
+
+        context.subscriptions.push(csWatcher, csprojWatcher, jsonWatcher);
+        log(LogLevel.Info, 'File watchers registered successfully');
+
+        // Note: File watching is handled by explicit watchers above
+        // The server filters based on observation mode
 
         // Commands
         context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {
@@ -217,10 +251,12 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }));
 
-        // Auto-start if configured
+        // Auto-start if configured (NOTE: Server already auto-starts on initialization via OnInitialized)
         const autoRun = config.get<boolean>('autoRunOnCompileSuccess') ?? Constants.Defaults.AUTO_RUN_ON_COMPILE_SUCCESS;
         if (autoRun) {
-            log(LogLevel.Info, 'Auto-start enabled');
+            log(LogLevel.Warning, 'Auto-start is enabled but server already auto-starts on initialization - this will cause double-build');
+            log(LogLevel.Info, 'Consider disabling gengora.autoRunOnCompileSuccess setting');
+            /* Disabled to prevent double-build - server already calls StartGeneratorAsync in OnInitialized
             try {
                 await new Promise(resolve => setTimeout(resolve, Constants.Defaults.AUTO_START_DELAY_MS));
                 if (client && client.isRunning()) {
@@ -232,6 +268,7 @@ export async function activate(context: vscode.ExtensionContext) {
             } catch (error: any) {
                 log(LogLevel.Error, `Auto-start failed: ${error?.message ?? error}`);
             }
+            */
         }
 
         log(LogLevel.Info, '=== Gengora Extension Activated ===');

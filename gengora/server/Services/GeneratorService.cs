@@ -17,6 +17,20 @@ public class GeneratorService : IGeneratorService
     private readonly ILanguageServerFacade _LanguageServer;
     private readonly GeneratorCapabilities _GeneratorCapabilities;
     private bool _IsPaused;
+    
+    // Standard ignore patterns for file watching
+    private static readonly string[] DefaultIgnorePatterns = new[]
+    {
+        "/bin/",
+        "/obj/",
+        "/node_modules/",
+        "/.git/",
+        "/.vs/",
+        "/.vscode/.generator/",
+        "/packages/",
+        "/.idea/",
+        "/gengora-output/"
+    };
 
     public GeneratorService
     (
@@ -74,9 +88,12 @@ public class GeneratorService : IGeneratorService
 
     public async Task StartGeneratorAsync(CancellationToken cancellationToken)
     {
+
         await this.SendStatusAsync(Constants.States.COMPILING, null, null, cancellationToken);
 
+        await Console.Error.WriteLineAsync("[GeneratorService] Calling FindAndOpenGeneratorProjectAsync...");
         var found = await this._GeneratorManager.FindAndOpenGeneratorProjectAsync(cancellationToken);
+        await Console.Error.WriteLineAsync($"[GeneratorService] FindAndOpenGeneratorProjectAsync returned: {found}");
         
         if (!found)
         {
@@ -87,18 +104,15 @@ public class GeneratorService : IGeneratorService
 
         // Update observation manager with discovered project
         var projectPath = this._GeneratorManager.GetCurrentProjectPath();
+        
         if (!string.IsNullOrEmpty(projectPath))
         {
-            await Console.Error.WriteLineAsync($"[GeneratorService] Setting observation for project: {projectPath}");
             await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
-            await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode is now: {this._ObservationManager.CurrentMode}");
-        }
-        else
-        {
-            await Console.Error.WriteLineAsync($"[GeneratorService] WARNING: No project path available for observation manager");
         }
 
+        await Console.Error.WriteLineAsync("[GeneratorService] Calling BuildGeneratorAsync...");
         var build = await this._GeneratorManager.BuildGeneratorAsync(cancellationToken);
+        await Console.Error.WriteLineAsync($"[GeneratorService] Build complete. Success={build.Success}, AssemblyPath={build.BuiltAssemblyPath}");
         
         if (!build.Success)
         {
@@ -111,8 +125,11 @@ public class GeneratorService : IGeneratorService
         // Publish any warnings
         await this.PublishBuildDiagnosticsAsync(build, cancellationToken);
 
+        await Console.Error.WriteLineAsync("[GeneratorService] Calling EmitGeneratorAssemblyAsync...");
         var outDir = Path.Combine(Directory.GetCurrentDirectory(), Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER, Constants.Directories.OUT_FOLDER);
+        await Console.Error.WriteLineAsync($"[GeneratorService] outDir={outDir}");
         var assemblyPath = await this._GeneratorManager.EmitGeneratorAssemblyAsync(build.BuiltAssemblyPath!, outDir, cancellationToken);
+        await Console.Error.WriteLineAsync($"[GeneratorService] EmitGeneratorAssemblyAsync returned: {assemblyPath}");
         
         if (assemblyPath == null)
         {
@@ -123,8 +140,14 @@ public class GeneratorService : IGeneratorService
 
         await this.SendStatusAsync(Constants.States.COMPILED, null, assemblyPath, cancellationToken);
 
+        var workspaceRoot = Path.GetDirectoryName(this._GeneratorManager.GetCurrentProjectPath()) ?? Directory.GetCurrentDirectory();
+        await Console.Error.WriteLineAsync($"[GeneratorService] workspaceRoot={workspaceRoot}");
+        
+        await Console.Error.WriteLineAsync("[GeneratorService] Stopping existing process...");
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
-        await this._ProcessManager.StartProcessAsync(assemblyPath, null, cancellationToken);
+        await Console.Error.WriteLineAsync($"[GeneratorService] Starting process: {assemblyPath}");
+        await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken);
+        await Console.Error.WriteLineAsync("[GeneratorService] Process started successfully");
         
         await this.SendStatusAsync(Constants.States.RUNNING, null, assemblyPath, cancellationToken);
     }
@@ -186,31 +209,42 @@ public class GeneratorService : IGeneratorService
 
     public async Task HandleFileChangeAsync(string filePath, CancellationToken cancellationToken)
     {
-        await Console.Error.WriteLineAsync($"[GeneratorService] File changed: {filePath}");
-        await Console.Error.WriteLineAsync($"[GeneratorService] Current observation mode: {this._ObservationManager.CurrentMode}");
-        await Console.Error.WriteLineAsync($"[GeneratorService] Is paused: {this._IsPaused}");
+        // Check if file should be ignored
+        if (this.ShouldIgnoreFile(filePath))
+        {
+            return;
+        }
         
         // If it's a .csproj file, recheck marker
         if (filePath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
         {
-            var modeChanged = await this._ObservationManager.RecheckMarkerAsync(cancellationToken);
-            
-            if (modeChanged)
-            {
-                await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode changed for: {filePath}");
-            }
+            await this._ObservationManager.RecheckMarkerAsync(cancellationToken);
         }
         
         // If in full observation mode and not paused, trigger restart
         if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
         {
-            await Console.Error.WriteLineAsync($"[GeneratorService] Triggering rebuild due to file change");
             await this.RestartGeneratorAsync(cancellationToken);
         }
-        else
+    }
+    
+    private bool ShouldIgnoreFile(string filePath)
+    {
+        var normalizedPath = filePath.Replace('\\', '/');
+        
+        // Check against default ignore patterns
+        foreach (var pattern in DefaultIgnorePatterns)
         {
-            await Console.Error.WriteLineAsync($"[GeneratorService] Skipping rebuild - mode={this._ObservationManager.CurrentMode}, paused={this._IsPaused}");
+            if (normalizedPath.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
         }
+        
+        // TODO: Add support for user-configured ignore patterns from settings
+        // This could read from .gengoraignore or LSP configuration
+        
+        return false;
     }
 
     private void HandleGeneratorStdoutLine(string line)

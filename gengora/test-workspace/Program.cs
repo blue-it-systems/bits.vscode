@@ -12,7 +12,7 @@ class Program
     {
         try
         {
-            var cwd = $"{Directory.GetCurrentDirectory()}";
+            var cwd = Directory.GetCurrentDirectory();
             Console.WriteLine("Sample Generator starting up..."); 
 
             // Emit a single-line JSON handshake (generator -> coordinator)
@@ -32,11 +32,16 @@ class Program
             };
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(hello));
 
-            // Create a generated project folder inside the current workspace
+            // Create a generated project folder OUTSIDE the generator project
+            // Navigate up from test-workspace to bits.vscode root, then create in gengora-output/
+            var workspaceRoot = Directory.GetParent(cwd)?.Parent?.FullName ?? cwd;
+            var outputRoot = Path.Combine(workspaceRoot, "gengora-output");
+            Directory.CreateDirectory(outputRoot);
+            
             var baseName = "GeneratedProject";
-            var unique = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            var unique = DateTime.UtcNow.ToString("yyyyMMddHH");
             var genFolderName = baseName + "-" + unique;
-            var genPath = Path.Combine(cwd, genFolderName);
+            var genPath = Path.Combine(outputRoot, genFolderName);
             Directory.CreateDirectory(genPath);
 
             // Minimal csproj 
@@ -52,15 +57,15 @@ class Program
             // Minimal Program.cs 
             var programText =
                 "using System;" + Environment.NewLine +
-                "class GProgram { static void Main() { Console.WriteLine(\"Hello from GeneratedProject\"); } }";
+                "class GeneratedApp { static void Main() { Console.WriteLine(\"Hello from GeneratedProject\"); } }";
             File.WriteAllText(Path.Combine(genPath, "Program.cs"), programText);
 
             // Create initial timestamp file
             var createdFiles = new List<string>();
-            var tsFile = Path.Combine(genPath, $"generated-{DateTime.UtcNow:yyyy.MM.dd.HH-mm}.txt");
+            var tsFile = Path.Combine(genPath, $"generated-{DateTime.UtcNow:yyyy.MM.dd.HH-mm-ss}.txt4"); 
             File.WriteAllText(tsFile, DateTime.UtcNow.ToString("o") + "\n");
             createdFiles.Add(tsFile);
-
+ 
             // Emit an event describing what we created
             var createdMsg = new
             {
@@ -81,4 +86,4 @@ class Program
             Environment.Exit(1);
         }
     }
-}
+}// Test change 23:02:59

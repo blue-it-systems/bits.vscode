@@ -13,7 +13,7 @@ public class ProcessManager
 
     public bool IsRunning => this._Process != null && !this._Process.HasExited;
 
-    public async Task StartProcessAsync(string assemblyPath, string? args = null, CancellationToken ct = default)
+    public async Task StartProcessAsync(string assemblyPath, string? args = null, string? workingDirectory = null, CancellationToken ct = default)
     {
         if (this.IsRunning)
         {
@@ -28,6 +28,7 @@ public class ProcessManager
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
+            WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory()
         };
 
         this._Process = new Process { StartInfo = psi, EnableRaisingEvents = true };
