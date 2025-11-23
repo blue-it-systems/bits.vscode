@@ -54,6 +54,8 @@ internal static class Constants
         // New command names
         public const string GENGORA_START = "gengora.start";
         public const string GENGORA_STOP = "gengora.stop";
+        public const string GENGORA_PAUSE = "gengora.pause";
+        public const string GENGORA_SWITCH_PROJECT = "gengora.switchProject";
 
         /// <summary>
         /// All supported commands for capability advertisement
@@ -63,7 +65,9 @@ internal static class Constants
             GENERATOR_START,
             GENERATOR_STOP,
             GENGORA_START,
-            GENGORA_STOP
+            GENGORA_STOP,
+            GENGORA_PAUSE,
+            GENGORA_SWITCH_PROJECT
         ];
     }
 
@@ -78,8 +82,12 @@ internal static class Constants
         public const string RUNNING = "running";
         public const string STOPPING = "stopping";
         public const string STOPPED = "stopped";
+        public const string PAUSED = "paused";
         public const string ERROR = "error";
         public const string WATCH_SKIPPED = "watch-skipped";
+        public const string SCANNING = "scanning";
+        public const string OBSERVING_MINIMAL = "observing-minimal";
+        public const string OBSERVING_FULL = "observing-full";
     }
 
     /// <summary>
@@ -116,8 +124,9 @@ internal static class Constants
     /// </summary>
     public static class Patterns
     {
-        public const string GENGORA_FOLDER_NAME = "Gengora";
-        public const string CSPROJ_PATTERN = "*.csproj";
+        public const string CSPROJ_EXTENSION = ".csproj";
+        public const string CSHARP_EXTENSION = ".cs";
+        public const string GENERATOR_PROJECT_MARKER = "<IsGeneratorProject>true</IsGeneratorProject>";
     }
 
     /// <summary>

@@ -60,6 +60,7 @@ internal class Program
         // Register core managers
         services.AddSingleton(new GeneratorManager(workspaceRoot));
         services.AddSingleton<ProcessManager>();
+        services.AddSingleton(new ObservationManager(workspaceRoot));
 
         // Register application services
         services.AddSingleton<IGeneratorService, GeneratorService>();

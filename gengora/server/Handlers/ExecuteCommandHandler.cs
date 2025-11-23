@@ -25,6 +25,18 @@ public class ExecuteCommandHandler(IGeneratorService generatorService) : Execute
         {
             await this._GeneratorService.StopGeneratorAsync(cancellationToken);
         }
+        else if (command == Constants.Commands.GENGORA_PAUSE)
+        {
+            await this._GeneratorService.PauseGeneratorAsync(cancellationToken);
+        }
+        else if (command == Constants.Commands.GENGORA_SWITCH_PROJECT && request.Arguments != null && request.Arguments.Count > 0)
+        {
+            var projectPath = request.Arguments[0].ToString();
+            if (!string.IsNullOrEmpty(projectPath))
+            {
+                await this._GeneratorService.SwitchProjectAsync(projectPath, cancellationToken);
+            }
+        }
 
         return Unit.Value;
     }

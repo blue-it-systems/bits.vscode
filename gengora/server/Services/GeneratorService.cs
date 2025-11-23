@@ -7,30 +7,64 @@ using OmniSharp.Extensions.LanguageServer.Protocol.Server;
 namespace BITS.Gengora.Server.Services;
 
 /// <summary>
-/// Core service for managing generator compilation, execution, and lifecycle.
+/// Core service for managing generator compilation, execution, and lifecycle with dynamic observation.
 /// </summary>
 public class GeneratorService : IGeneratorService
 {
     private readonly GeneratorManager _GeneratorManager;
     private readonly ProcessManager _ProcessManager;
+    private readonly ObservationManager _ObservationManager;
     private readonly ILanguageServerFacade _LanguageServer;
     private readonly GeneratorCapabilities _GeneratorCapabilities;
+    private bool _IsPaused;
 
     public GeneratorService
     (
         GeneratorManager generatorManager,
         ProcessManager processManager,
+        ObservationManager observationManager,
         ILanguageServerFacade languageServer
     )
     {
         this._GeneratorManager = generatorManager;
         this._ProcessManager = processManager;
+        this._ObservationManager = observationManager;
         this._LanguageServer = languageServer;
         this._GeneratorCapabilities = new GeneratorCapabilities();
+        this._IsPaused = false;
 
         // Wire up process output handlers
         this._ProcessManager.OnStdout += this.HandleGeneratorStdoutLine;
         this._ProcessManager.OnStderr += this.HandleGeneratorStderrLine;
+        
+        // Wire up observation mode changes
+        this._ObservationManager.OnModeChanged += (oldMode, newMode) =>
+        {
+            _ = this.HandleObservationModeChangedAsync(oldMode, newMode);
+        };
+    }
+
+    private async Task HandleObservationModeChangedAsync(ObservationMode oldMode, ObservationMode newMode)
+    {
+        await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode changed: {oldMode} → {newMode}");
+        
+        // Upgrade: minimal → full (marker became true)
+        if (oldMode == ObservationMode.MinimalObservation && newMode == ObservationMode.FullObservation)
+        {
+            await this.SendStatusAsync(Constants.States.OBSERVING_FULL, "Generator marker detected, enabling full observation", null, CancellationToken.None);
+            
+            if (!this._IsPaused)
+            {
+                await this.StartGeneratorAsync(CancellationToken.None);
+            }
+        }
+        
+        // Downgrade: full → minimal (marker removed)
+        else if (oldMode == ObservationMode.FullObservation && newMode == ObservationMode.MinimalObservation)
+        {
+            await this.SendStatusAsync(Constants.States.OBSERVING_MINIMAL, "Generator marker removed, switching to minimal observation", null, CancellationToken.None);
+            await this.StopGeneratorAsync(CancellationToken.None);
+        }
     }
 
     public GeneratorCapabilities GetCapabilities()
@@ -84,13 +118,27 @@ public class GeneratorService : IGeneratorService
 
     public async Task StopGeneratorAsync(CancellationToken cancellationToken)
     {
+        this._IsPaused = false;
         await this.SendStatusAsync(Constants.States.STOPPING, null, null, cancellationToken);
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
         await this.SendStatusAsync(Constants.States.STOPPED, null, null, cancellationToken);
     }
 
+    public async Task PauseGeneratorAsync(CancellationToken cancellationToken)
+    {
+        this._IsPaused = true;
+        await this.SendStatusAsync(Constants.States.PAUSED, "Generator paused", null, cancellationToken);
+        await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
+    }
+
     public async Task RestartGeneratorAsync(CancellationToken cancellationToken)
     {
+        // Don't restart if paused
+        if (this._IsPaused)
+        {
+            return;
+        }
+
         // Check if generator manages its own watch mode
         if (this._GeneratorCapabilities.WatchMode)
         {
@@ -99,7 +147,48 @@ public class GeneratorService : IGeneratorService
             return;
         }
 
-        await this.StartGeneratorAsync(cancellationToken);
+        // Only restart if in full observation mode
+        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation)
+        {
+            await this.StartGeneratorAsync(cancellationToken);
+        }
+    }
+
+    public async Task SwitchProjectAsync(string projectPath, CancellationToken cancellationToken)
+    {
+        await Console.Error.WriteLineAsync($"[GeneratorService] Switching to project: {projectPath}");
+        
+        // Stop current generator
+        await this.StopGeneratorAsync(cancellationToken);
+        
+        // Update observation manager with new project
+        await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
+        
+        // Restart if in full observation mode
+        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
+        {
+            await this.StartGeneratorAsync(cancellationToken);
+        }
+    }
+
+    public async Task HandleFileChangeAsync(string filePath, CancellationToken cancellationToken)
+    {
+        // If it's a .csproj file, recheck marker
+        if (filePath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
+        {
+            var modeChanged = await this._ObservationManager.RecheckMarkerAsync(cancellationToken);
+            
+            if (modeChanged)
+            {
+                await Console.Error.WriteLineAsync($"[GeneratorService] Observation mode changed for: {filePath}");
+            }
+        }
+        
+        // If in full observation mode and not paused, trigger restart
+        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
+        {
+            await this.RestartGeneratorAsync(cancellationToken);
+        }
     }
 
     private void HandleGeneratorStdoutLine(string line)

@@ -19,36 +19,67 @@ public class GeneratorManager(string workspaceRoot)
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Checks if a .csproj file contains the generator marker.
+    /// </summary>
+    private async Task<bool> IsGeneratorProjectAsync(string csprojPath, CancellationToken ct)
+    {
+        try
+        {
+            var content = await File.ReadAllTextAsync(csprojPath, ct);
+            return content.Contains(Constants.Patterns.GENERATOR_PROJECT_MARKER, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Finds generator project using marker-based discovery.
+    /// Priority: 1) User-specified path, 2) Auto-discovery via marker scan
+    /// </summary>
     public async Task<bool> FindAndOpenGeneratorProjectAsync(CancellationToken ct)
     {
         await this.EnsureMSBuildAsync();
 
-        // Priority 1: Specific .csproj file path from environment (GENERATOR_PROJECT_PATH)
+        // Priority 1: User-specified path (GENERATOR_PROJECT_PATH or GENERATOR_FOLDER_PATH)
         var envProjectPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_PROJECT_PATH);
+        var envFolderPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_FOLDER_PATH);
+
+        // Try specific .csproj file first
         if (!string.IsNullOrEmpty(envProjectPath))
         {
-            // If it's a .csproj file, use it directly
-            if (File.Exists(envProjectPath) && envProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            var projectPath = Path.IsPathRooted(envProjectPath) 
+                ? envProjectPath 
+                : Path.Combine(this._WorkspaceRoot, envProjectPath);
+
+            // Direct .csproj file
+            if (File.Exists(projectPath) && projectPath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
             {
-                this._GeneratorProjectPath = envProjectPath;
-                return true;
+                if (await this.IsGeneratorProjectAsync(projectPath, ct))
+                {
+                    this._GeneratorProjectPath = projectPath;
+                    return true;
+                }
             }
             
-            // If it's a folder, look for .csproj inside
-            if (Directory.Exists(envProjectPath))
+            // Folder containing .csproj
+            if (Directory.Exists(projectPath))
             {
-                var csprojs = Directory.GetFiles(envProjectPath, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
-                var csproj = csprojs.FirstOrDefault();
-                if (csproj != null)
+                var csprojs = Directory.GetFiles(projectPath, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.TopDirectoryOnly);
+                foreach (var csproj in csprojs)
                 {
-                    this._GeneratorProjectPath = csproj;
-                    return true;
+                    if (await this.IsGeneratorProjectAsync(csproj, ct))
+                    {
+                        this._GeneratorProjectPath = csproj;
+                        return true;
+                    }
                 }
             }
         }
 
-        // Priority 2: Custom folder path from environment (GENERATOR_FOLDER_PATH)
-        var envFolderPath = System.Environment.GetEnvironmentVariable(Constants.Environment.GENERATOR_FOLDER_PATH);
+        // Try folder path
         if (!string.IsNullOrEmpty(envFolderPath))
         {
             var folderPath = Path.IsPathRooted(envFolderPath) 
@@ -57,35 +88,42 @@ public class GeneratorManager(string workspaceRoot)
             
             if (Directory.Exists(folderPath))
             {
-                var csprojs = Directory.GetFiles(folderPath, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
-                var csproj = csprojs.FirstOrDefault();
-                if (csproj != null)
+                var csprojs = Directory.GetFiles(folderPath, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.TopDirectoryOnly);
+                foreach (var csproj in csprojs)
                 {
-                    this._GeneratorProjectPath = csproj;
-                    return true;
+                    if (await this.IsGeneratorProjectAsync(csproj, ct))
+                    {
+                        this._GeneratorProjectPath = csproj;
+                        return true;
+                    }
                 }
             }
         }
 
-        // Priority 3: Default - Look ONLY in the Gengora folder
-        var gengoraFolder = Path.Combine(this._WorkspaceRoot, Constants.Patterns.GENGORA_FOLDER_NAME);
+        // Priority 2: Auto-discovery - scan workspace for marker
+        await Console.Error.WriteLineAsync("[GeneratorManager] Auto-discovering generator project...");
         
-        if (!Directory.Exists(gengoraFolder))
-        {
-            return false;
-        }
+        var allCsprojs = Directory.GetFiles(this._WorkspaceRoot, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.AllDirectories);
         
-        var defaultCsprojs = Directory.GetFiles(gengoraFolder, Constants.Patterns.CSPROJ_PATTERN, SearchOption.TopDirectoryOnly);
-        var defaultCsproj = defaultCsprojs.FirstOrDefault();
-
-        if (defaultCsproj is null)
+        foreach (var csproj in allCsprojs)
         {
-            return false;
+            // Skip bin/obj folders
+            if (csproj.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") ||
+                csproj.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            {
+                continue;
+            }
+
+            if (await this.IsGeneratorProjectAsync(csproj, ct))
+            {
+                await Console.Error.WriteLineAsync($"[GeneratorManager] Found generator project: {csproj}");
+                this._GeneratorProjectPath = csproj;
+                return true;
+            }
         }
 
-        this._GeneratorProjectPath = defaultCsproj;
-
-        return true;
+        await Console.Error.WriteLineAsync("[GeneratorManager] No generator project found with marker");
+        return false;
     }
     public class BuildResult
     {

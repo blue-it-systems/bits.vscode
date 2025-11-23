@@ -23,7 +23,16 @@ public class DidChangeWatchedFilesHandler(IGeneratorService generatorService) : 
         try
         {
             await Task.Delay(Constants.Timeouts.WATCH_DEBOUNCE_MS, this._DebounceCts.Token);
-            await this._GeneratorService.RestartGeneratorAsync(cancellationToken);
+            
+            // Handle file changes (check for marker changes, trigger recompilation if needed)
+            foreach (var change in request.Changes)
+            {
+                var filePath = change.Uri.GetFileSystemPath();
+                if (!string.IsNullOrEmpty(filePath))
+                {
+                    await this._GeneratorService.HandleFileChangeAsync(filePath, cancellationToken);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
