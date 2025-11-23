@@ -42,7 +42,7 @@ jobs:
       - name: Compile extension
         run: |
           cd gengora/extension
-          npm run compile
+          npm run build
 
       - name: Bundle server with extension
         run: |
