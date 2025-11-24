@@ -7,6 +7,7 @@ import * as Constants from './constants';
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel;
 let statusBar: vscode.StatusBarItem | undefined;
+let isActivated: boolean = false; // Guard against duplicate activation
 
 // Log levels: error = 0, warning = 1, info = 2, debug = 3
 enum LogLevel {
@@ -67,10 +68,111 @@ class FilteredOutputChannel implements vscode.OutputChannel {
     }
 }
 
-// No longer needed - server handles all discovery and file watching
+// File watcher management for dynamic registration
+let fileWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
+
+/**
+ * Parses .gitignore patterns and converts them to glob patterns
+ */
+function parseGitignorePatterns(gitignorePath: string): string[] {
+    const patterns: string[] = [];
+    try {
+        if (!fs.existsSync(gitignorePath)) {
+            return patterns;
+        }
+        
+        const content = fs.readFileSync(gitignorePath, 'utf-8');
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            // Skip empty lines and comments
+            if (!trimmed || trimmed.startsWith('#')) {
+                continue;
+            }
+            
+            // Convert gitignore pattern to glob pattern
+            // Remove leading/trailing slashes
+            let pattern = trimmed.replace(/^\/+|\/+$/g, '');
+            
+            // If pattern ends with /, it's a directory
+            if (pattern.endsWith('/')) {
+                pattern = `**/${pattern}**`;
+            } else if (!pattern.includes('*') && !pattern.includes('?')) {
+                // Literal file/folder - make it match anywhere and as directory
+                pattern = `**/${pattern}` + (trimmed.endsWith('/') ? '**' : '');
+            } else {
+                // Already has wildcards, make it match anywhere
+                if (!pattern.startsWith('*')) {
+                    pattern = `**/${pattern}`;
+                }
+            }
+            
+            patterns.push(pattern);
+        }
+    } catch (error) {
+        // Silently fail - gitignore not found or error reading
+    }
+    
+    return patterns;
+}
+
+/**
+ * Merges user-provided patterns with gitignore patterns
+ */
+function mergeExcludePatterns(userPatterns: string[], generatorProjectFolder: string, includeGitignore: boolean): string[] {
+    const allPatterns = new Set(userPatterns);
+    
+    if (includeGitignore && generatorProjectFolder) {
+        const gitignorePath = path.join(generatorProjectFolder, '.gitignore');
+        const gitignorePatterns = parseGitignorePatterns(gitignorePath);
+        gitignorePatterns.forEach(p => allPatterns.add(p));
+    }
+    
+    return Array.from(allPatterns);
+}
+
+/**
+ * Disposes all active file watchers
+ */
+function disposeAllWatchers(logger: (msg: string) => void) {
+    for (const [pattern, watcher] of fileWatchers) {
+        logger(`Disposing watcher for pattern: ${pattern}`);
+        watcher.dispose();
+    }
+    fileWatchers.clear();
+}
+
+/**
+ * Creates file watchers for specified patterns
+ */
+function createWatchers(
+    patterns: string[],
+    projectFolder: string | undefined,
+    excludePatterns: string[],
+    logger: (msg: string) => void
+): Map<string, vscode.FileSystemWatcher> {
+    const watchers = new Map<string, vscode.FileSystemWatcher>();
+    
+    for (const pattern of patterns) {
+        const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+        watchers.set(pattern, watcher);
+        logger(`Created watcher for pattern: ${pattern}`);
+    }
+    
+    return watchers;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
+    // Guard against duplicate activation
+    if (isActivated) {
+        console.warn('[Gengora] Extension already activated, skipping duplicate activation');
+        return;
+    }
+    
     try {
+        isActivated = true; // Mark as activated immediately to prevent race conditions
+        
         output = vscode.window.createOutputChannel('Gengora');
         output.show(true);
         context.subscriptions.push(output);
@@ -88,11 +190,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const isManuallyStopped = context.workspaceState.get<boolean>('gengora.manuallyStopped', false);
         log(LogLevel.Debug, `Manual stop state: ${isManuallyStopped}`);
 
-        // Status bar
+        // Status bar with menu command
         statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
         statusBar.text = Constants.StatusBar.INITIALIZING;
         statusBar.tooltip = Constants.StatusBar.TOOLTIP;
-        statusBar.command = Constants.Commands.GENGORA_SHOW_OUTPUT;
+        statusBar.command = 'gengora.statusBarMenu';
         statusBar.show();
         context.subscriptions.push(statusBar);
 
@@ -210,6 +312,46 @@ export async function activate(context: vscode.ExtensionContext) {
             log(LogLevel.Warning, `[Gengora stderr] ${params.text ?? String(params)}`);
         });
 
+        client.onNotification(Constants.Notifications.GENERATOR_PROJECT_DISCOVERED, (params: any) => {
+            const projectPath = params?.projectPath ?? '';
+            if (projectPath) {
+                log(LogLevel.Info, `Generator project discovered: ${projectPath}`);
+            }
+        });
+
+        client.onNotification(Constants.Notifications.OBSERVATION_MODE_CHANGED, (params: any) => {
+            const mode = params?.mode ?? 'unknown';
+            const projectFolder = params?.projectFolder ?? '';
+            
+            log(LogLevel.Debug, `Observation mode changed to: ${mode}`);
+            
+            if (mode === 'FullObservation' && projectFolder) {
+                // Generator found - setup full file watching
+                log(LogLevel.Info, `Setting up full file watchers for: ${projectFolder}`);
+                const config = vscode.workspace.getConfiguration('gengora');
+                const userPatterns = config.get<string[]>(Constants.ConfigKeys.EXCLUDE_PATTERNS) || Array.from(Constants.Defaults.IGNORE_PATTERNS);
+                const mergeGitignore = config.get<boolean>(Constants.ConfigKeys.MERGE_GITIGNORE) ?? true;
+                const excludePatterns = mergeExcludePatterns(userPatterns, projectFolder, mergeGitignore);
+                
+                if (mergeGitignore) {
+                    log(LogLevel.Debug, `Merged .gitignore patterns (${excludePatterns.length} total patterns)`);
+                }
+                
+                // Dispose old watchers
+                disposeAllWatchers((msg) => log(LogLevel.Debug, msg));
+                
+                // Create new watchers for full observation
+                const patterns = ['**/*.cs', '**/*.csproj', '**/*.json'];
+                fileWatchers = createWatchers(patterns, projectFolder, excludePatterns, (msg) => log(LogLevel.Debug, msg));
+            } else if (mode === 'MinimalObservation') {
+                // Generator not found - only watch for .csproj files
+                log(LogLevel.Info, 'Switching to minimal file watching (only .csproj files)');
+                
+                disposeAllWatchers((msg) => log(LogLevel.Debug, msg));
+                fileWatchers = createWatchers(['**/*.csproj'], undefined, [], (msg) => log(LogLevel.Debug, msg));
+            }
+        });
+
         client.onNotification(Constants.Notifications.GENERATOR_STATUS, (params: any) => {
             const state = params?.state ?? '';
             const message = params?.message ?? '';
@@ -225,7 +367,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         statusBar.text = Constants.StatusBar.COMPILED;
                         break;
                     case Constants.States.RUNNING:
-                        log(LogLevel.Debug, '[Gengora] Generator starting up...');
+                        log(LogLevel.Debug, '[Gengora] Generator running');
                         statusBar.text = Constants.StatusBar.RUNNING;
                         break;
                     case Constants.States.ERROR:
@@ -235,6 +377,14 @@ export async function activate(context: vscode.ExtensionContext) {
                     case Constants.States.STOPPED:
                         log(LogLevel.Debug, '[Gengora] Generator stopped');
                         statusBar.text = Constants.StatusBar.STOPPED;
+                        break;
+                    case Constants.States.OBSERVING_MINIMAL:
+                        log(LogLevel.Debug, '[Gengora] Observing (minimal - waiting for marker)');
+                        statusBar.text = Constants.StatusBar.READY;
+                        break;
+                    case Constants.States.OBSERVING_FULL:
+                        log(LogLevel.Debug, '[Gengora] Observing (full - generator project found)');
+                        statusBar.text = Constants.StatusBar.READY;
                         break;
                     default:
                         log(LogLevel.Debug, `Status: ${state}${message ? ' - ' + message : ''}`);
@@ -250,15 +400,12 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         // Dispose client on deactivation
-        context.subscriptions.push({ dispose: () => client?.stop() });
+        context.subscriptions.push({ dispose: () => {
+            client?.stop();
+            disposeAllWatchers((msg) => log(LogLevel.Debug, msg));
+        }});
 
-        // Create explicit file watchers and forward to server
-        // This ensures file watching works even if LSP dynamic registration isn't supported
-        log(LogLevel.Info, 'Creating file watchers for **.cs, **.csproj, **.json');
-        const csWatcher = vscode.workspace.createFileSystemWatcher('**/*.cs');
-        const csprojWatcher = vscode.workspace.createFileSystemWatcher('**/*.csproj');
-        const jsonWatcher = vscode.workspace.createFileSystemWatcher('**/*.json');
-
+        // Setup file change forwarding
         const forwardFileChange = (uri: vscode.Uri, type: number) => {
             log(LogLevel.Info, `File change detected: ${uri.fsPath} (type=${type})`);
             if (client && client.isRunning()) {
@@ -271,90 +418,122 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         };
 
-        csWatcher.onDidChange((uri) => forwardFileChange(uri, 2)); // Changed
-        csWatcher.onDidCreate((uri) => forwardFileChange(uri, 1)); // Created
-        csWatcher.onDidDelete((uri) => forwardFileChange(uri, 3)); // Deleted
-
-        csprojWatcher.onDidChange((uri) => forwardFileChange(uri, 2));
-        csprojWatcher.onDidCreate((uri) => forwardFileChange(uri, 1));
-        csprojWatcher.onDidDelete((uri) => forwardFileChange(uri, 3));
-
-        jsonWatcher.onDidChange((uri) => forwardFileChange(uri, 2));
-        jsonWatcher.onDidCreate((uri) => forwardFileChange(uri, 1));
-        jsonWatcher.onDidDelete((uri) => forwardFileChange(uri, 3));
-
-        context.subscriptions.push(csWatcher, csprojWatcher, jsonWatcher);
-        log(LogLevel.Info, 'File watchers registered successfully');
-
-        // Note: File watching is handled by explicit watchers above
-        // The server filters based on observation mode
-
-        // Commands
-        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {
-            try {
-                log(LogLevel.Info, 'Starting Gengora...');
-                await context.workspaceState.update('gengora.manuallyStopped', false); // Clear manual stop flag
-                if (client) {
-                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
-                }
-            } catch (error: any) {
-                log(LogLevel.Error, `Failed to start: ${error?.message ?? error}`);
-                vscode.window.showErrorMessage(`Failed to start Gengora: ${error?.message ?? error}`);
+        // Initialize minimal watchers (only .csproj)
+        log(LogLevel.Info, 'Initializing minimal file watchers (waiting for generator marker)...');
+        fileWatchers = createWatchers(['**/*.csproj'], undefined, [], (msg) => log(LogLevel.Debug, msg));
+        
+        // Attach handlers to all watchers
+        const attachWatcherHandlers = () => {
+            for (const watcher of fileWatchers.values()) {
+                watcher.onDidChange((uri) => forwardFileChange(uri, 2)); // Changed
+                watcher.onDidCreate((uri) => forwardFileChange(uri, 1)); // Created
+                watcher.onDidDelete((uri) => forwardFileChange(uri, 3)); // Deleted
             }
-        }));
+        };
+        
+        attachWatcherHandlers();
+        context.subscriptions.push(...Array.from(fileWatchers.values()));
 
-        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_SHOW_OUTPUT, () => {
-            output.show(false);
-        }));
-
-        context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_STOP, async () => {
-            try {
-                log(LogLevel.Info, 'Stopping Gengora (manual stop - will persist across reloads)...');
-                await context.workspaceState.update('gengora.manuallyStopped', true); // Set manual stop flag (persists across reloads)
-                if (client) {
-                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_STOP });
+        // Commands - Register only if not already registered (prevents duplicate registration on retry)
+        const existingCommands = await vscode.commands.getCommands(true);
+        
+        if (!existingCommands.includes(Constants.Commands.GENGORA_RUN)) {
+            context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {
+                try {
+                    log(LogLevel.Info, 'Starting Gengora...');
+                    await context.workspaceState.update('gengora.manuallyStopped', false); // Clear manual stop flag
+                    if (client) {
+                        await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
+                    }
+                } catch (error: any) {
+                    log(LogLevel.Error, `Failed to start: ${error?.message ?? error}`);
+                    vscode.window.showErrorMessage(`Failed to start Gengora: ${error?.message ?? error}`);
                 }
-            } catch (error: any) {
-                log(LogLevel.Error, `Failed to stop: ${error?.message ?? error}`);
-                vscode.window.showErrorMessage(`Failed to stop Gengora: ${error?.message ?? error}`);
-            }
-        }));
+            }));
+        }
+
+        if (!existingCommands.includes(Constants.Commands.GENGORA_SHOW_OUTPUT)) {
+            context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_SHOW_OUTPUT, () => {
+                output.show(false);
+            }));
+        }
+
+        if (!existingCommands.includes(Constants.Commands.GENGORA_STOP)) {
+            context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_STOP, async () => {
+                try {
+                    log(LogLevel.Info, 'Stopping Gengora (manual stop - will persist across reloads)...');
+                    await context.workspaceState.update('gengora.manuallyStopped', true); // Set manual stop flag (persists across reloads)
+                    if (client) {
+                        await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_STOP });
+                    }
+                } catch (error: any) {
+                    log(LogLevel.Error, `Failed to stop: ${error?.message ?? error}`);
+                    vscode.window.showErrorMessage(`Failed to stop Gengora: ${error?.message ?? error}`);
+                }
+            }));
+        }
+
+        // Status bar menu command
+        if (!existingCommands.includes('gengora.statusBarMenu')) {
+            context.subscriptions.push(vscode.commands.registerCommand('gengora.statusBarMenu', async () => {
+                const currentLevel = config.get<string>('logLevel', Constants.Defaults.LOG_LEVEL);
+                
+                const items: vscode.QuickPickItem[] = [
+                    { label: '$(play) Start', description: 'Start the generator' },
+                    { label: '$(stop) Stop', description: 'Stop the generator' },
+                    { label: '$(output) Show Output', description: 'Show output channel' },
+                    { label: '', kind: vscode.QuickPickItemKind.Separator },
+                    { label: `$(info) Log Level: ${currentLevel}`, description: 'Change logging verbosity' }
+                ];
+
+                const choice = await vscode.window.showQuickPick(items, { placeHolder: 'Gengora Menu' });
+                
+                if (!choice) return;
+
+                if (choice.label.includes('Start')) {
+                    await vscode.commands.executeCommand(Constants.Commands.GENGORA_RUN);
+                } else if (choice.label.includes('Stop')) {
+                    await vscode.commands.executeCommand(Constants.Commands.GENGORA_STOP);
+                } else if (choice.label.includes('Show Output')) {
+                    output.show(false);
+                } else if (choice.label.includes('Log Level')) {
+                    const levels = ['warning', 'info', 'debug'];
+                    const levelChoice = await vscode.window.showQuickPick(levels, { 
+                        placeHolder: `Current: ${currentLevel}` 
+                    });
+                    if (levelChoice && levelChoice !== currentLevel) {
+                        await config.update('logLevel', levelChoice, vscode.ConfigurationTarget.Global);
+                        vscode.window.showInformationMessage(`Log level changed to: ${levelChoice}`);
+                    }
+                }
+            }));
+        }
 
         // Auto-start if configured (NOTE: Server already auto-starts on initialization via OnInitialized)
+        // This setting is kept for backward compatibility but server handles auto-start internally
         const autoRun = config.get<boolean>('autoRunOnCompileSuccess') ?? Constants.Defaults.AUTO_RUN_ON_COMPILE_SUCCESS;
         if (autoRun) {
-            log(LogLevel.Info, 'Note: Auto-start setting is enabled but server already initializes automatically');
-            log(LogLevel.Info, 'Consider disabling gengora.autoRunOnCompileSuccess setting to avoid confusion');
-            /* Disabled to prevent double-build - server already calls StartGeneratorAsync in OnInitialized
-            try {
-                await new Promise(resolve => setTimeout(resolve, Constants.Defaults.AUTO_START_DELAY_MS));
-                if (client && client.isRunning()) {
-                    log(LogLevel.Debug, 'Sending auto-start command...');
-                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
-                } else {
-                    log(LogLevel.Warning, 'Client not ready for auto-start');
-                }
-            } catch (error: any) {
-                log(LogLevel.Error, `Auto-start failed: ${error?.message ?? error}`);
-            }
-            */
+            log(LogLevel.Debug, 'Note: gengora.autoRunOnCompileSuccess is deprecated - server handles auto-start internally');
         }
 
         log(LogLevel.Info, '=== Gengora Extension Activated ===');
         statusBar.text = Constants.StatusBar.READY;
 
     } catch (error: any) {
+        isActivated = false; // Reset flag on error so retry can work
         const msg = `Activation failed: ${error?.message ?? error}`;
         log(LogLevel.Error, msg);
         vscode.window.showErrorMessage(`Gengora: ${msg}`);
         if (statusBar) {
             statusBar.text = Constants.StatusBar.ACTIVATION_FAILED;
         }
+        throw error; // Re-throw to let VS Code know activation failed
     }
 }
 
 export function deactivate(): Promise<void> | undefined {
     if (!client) return undefined;
+    isActivated = false; // Reset flag on deactivation
     log(LogLevel.Info, 'Deactivating...');
     return client.stop() as Promise<void>;
 }

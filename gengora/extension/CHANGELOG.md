@@ -2,6 +2,51 @@
 
 All notable changes to the Gengora extension will be documented in this file.
 
+## [0.1.6] - 2025-11-24
+
+### Added
+
+- **Dynamic File Watchers**: Intelligent file watching based on generator discovery state
+  - Minimal mode (no generator found): Only watches `.csproj` files for marker detection
+  - Full mode (generator found): Watches `.cs`, `.csproj`, and `.json` files
+  - Automatically switches between modes as generator state changes
+  - Reduced log spam and unnecessary file system event processing
+
+- **Gitignore Integration**: Auto-merge `.gitignore` patterns with exclude patterns
+  - New setting `gengora.mergeGitignore` (default: true)
+  - Automatically parses `.gitignore` from generator project folder
+  - Converts gitignore patterns to glob format for file watching
+  - Users can disable merging if not needed
+
+- **Generator Project Discovery Notifications**: Improved visibility into generator discovery
+  - Logs full path when generator project is discovered
+  - New notification: `GENERATOR_PROJECT_DISCOVERED` with project path
+  - Status bar shows `OBSERVING_MINIMAL` and `OBSERVING_FULL` states
+
+- **Observation Mode Tracking**: Extension tracks generator observation mode changes
+  - New notification: `OBSERVATION_MODE_CHANGED` with mode and project folder
+  - Automatically creates/disposes watchers based on mode
+  - Better debugging with observation mode logging
+
+### Changed
+
+- **Removed Redundant Watchers**: Eliminated workspace-wide deletion watcher
+  - No longer creates `**` pattern watcher for all file deletions
+  - Marker-based system already handles cleanup properly
+  - Reduced overhead and log noise
+
+- **Deprecated autoRunOnCompileSuccess**: Setting now marked as deprecated
+  - Server handles auto-start internally
+  - Changed from INFO warning to DEBUG message
+  - Kept for backward compatibility
+
+### Technical Improvements
+
+- Added `.gitignore` pattern parsing and conversion utilities
+- Implemented dynamic file watcher lifecycle management
+- Added comprehensive observation mode change handling
+- Improved extension logging with clearer state transitions
+
 ## [0.1.5] - 2025-11-24
 
 ### Added

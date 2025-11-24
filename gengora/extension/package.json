@@ -2,7 +2,7 @@
   "name": "gengora",
   "displayName": "Gengora - Live Code Generator",
   "description": "Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",
@@ -37,7 +37,7 @@
     "vscode": "^1.80.0"
   },
   "activationEvents": [
-    "onStartupFinished"
+    "workspaceContains:**/*.csproj"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -89,6 +89,12 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically start the generator after successful compilation.",
+          "scope": "window"
+        },
+        "gengora.mergeGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically merge .gitignore patterns from the generator project folder with exclude patterns for file watching. Useful to avoid watching ignored files.",
           "scope": "window"
         },
         "gengora.logLevel": {

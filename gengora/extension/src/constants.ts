@@ -12,6 +12,8 @@ export const Notifications = {
     GENERATOR_STDERR: '$/generator.stderr',
     GENERATOR_ERROR: 'generator/error',
     GENERATOR_HELLO: 'generator/hello',
+    OBSERVATION_MODE_CHANGED: 'generator/observationModeChanged',
+    GENERATOR_PROJECT_DISCOVERED: 'generator/projectDiscovered',
 } as const;
 
 /**
@@ -44,6 +46,8 @@ export const States = {
     STOPPED: 'stopped',
     ERROR: 'error',
     WATCH_SKIPPED: 'watch-skipped',
+    OBSERVING_MINIMAL: 'observing-minimal',
+    OBSERVING_FULL: 'observing-full',
 } as const;
 
 /**
@@ -60,7 +64,7 @@ export const Build = {
  * Default configuration values
  */
 export const Defaults = {
-    LOG_LEVEL: 'warning',
+    LOG_LEVEL: 'debug',
     AUTO_RUN_ON_COMPILE_SUCCESS: true,
     AUTO_START_DELAY_MS: 500,
     IGNORE_PATTERNS: [
@@ -117,6 +121,8 @@ export const ConfigKeys = {
     EXCLUDE_PATTERNS: 'gengora.excludePatterns',
     AUTO_RUN_ON_COMPILE_SUCCESS: 'gengora.autoRunOnCompileSuccess',
     LOG_LEVEL: 'gengora.logLevel',
+    MERGE_GITIGNORE: 'gengora.mergeGitignore',
+    FILE_WATCH_IGNORE_PATTERNS: 'gengora.fileWatchIgnorePatterns',
 } as const;
 
 /**

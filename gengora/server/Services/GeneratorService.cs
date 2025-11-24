@@ -67,6 +67,14 @@ public class GeneratorService : IGeneratorService
         {
             await this.SendStatusAsync(Constants.States.OBSERVING_FULL, "Generator marker detected, enabling full observation", null, CancellationToken.None);
             
+            // Send observation mode changed notification to client
+            var projectFolder = this._ObservationManager.CurrentProjectFolder;
+            this._LanguageServer.SendNotification(Constants.Notifications.OBSERVATION_MODE_CHANGED, new
+            {
+                mode = "FullObservation",
+                projectFolder = projectFolder
+            });
+            
             // Clean build artifacts before starting to avoid corrupted state
             await this._GeneratorManager.CleanGeneratorAsync(CancellationToken.None);
             
@@ -80,6 +88,14 @@ public class GeneratorService : IGeneratorService
         else if (oldMode == ObservationMode.FullObservation && newMode == ObservationMode.MinimalObservation)
         {
             await this.SendStatusAsync(Constants.States.OBSERVING_MINIMAL, "Generator marker removed, switching to minimal observation", null, CancellationToken.None);
+            
+            // Send observation mode changed notification to client
+            this._LanguageServer.SendNotification(Constants.Notifications.OBSERVATION_MODE_CHANGED, new
+            {
+                mode = "MinimalObservation",
+                projectFolder = (string?)null
+            });
+            
             await this.StopGeneratorAsync(CancellationToken.None);
             
             // Clean build artifacts after stopping
@@ -113,6 +129,12 @@ public class GeneratorService : IGeneratorService
         if (!string.IsNullOrEmpty(projectPath))
         {
             await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
+            
+            // Send project discovered notification to client
+            this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_PROJECT_DISCOVERED, new
+            {
+                projectPath = projectPath
+            });
         }
 
         var build = await this._GeneratorManager.BuildGeneratorAsync(cancellationToken);
