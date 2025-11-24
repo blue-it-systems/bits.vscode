@@ -10,15 +10,18 @@ This repository contains VS Code extensions developed by Blue IT Systems GmbH.
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/bits.gengora)](https://marketplace.visualstudio.com/items?itemName=bits.gengora)
 
-**Real-time code generation with hot-reload support**
+Real-time code generation with hot-reload support
 
-Located in `gengora/` - **Latest version: 0.1.4**
+Located in `gengora/` - **Latest version: 0.1.5**
 
 Features:
+
 - 🔄 Automatic recompilation and restart on file changes
 - 🎯 Smart generator project discovery with markers
 - 📊 Live status bar and structured JSON protocol
 - 🛡️ Isolated builds to prevent compilation conflicts
+- ⚡ Smart auto-start with persistent manual stop state
+- 📦 Optimized package size (10.15 MB, 10% smaller)
 
 [Read more →](./gengora/README.md)
 
@@ -26,11 +29,12 @@ Features:
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/bits.csharp-test-filter)](https://marketplace.visualstudio.com/items?itemName=bits.csharp-test-filter)
 
-**Automatically detect C# test scope for TUnit debugging**
+Automatically detect C# test scope for TUnit debugging
 
 Located in `csharp-test-filter/` - **Latest version: 1.0.5**
 
 Features:
+
 - 🎯 Auto-detects test assembly/class/method scope
 - 🐛 Seamless integration with VS Code debugger
 - ⚡ Works with TUnit and other test frameworks
@@ -43,16 +47,16 @@ Features:
 
 Each extension can be released independently using GitHub tags:
 
-#### Gengora
+#### Publishing Gengora
 
 ```bash
-git tag gengora-v0.1.4
-git push origin gengora-v0.1.4
+git tag gengora-v0.1.5
+git push origin gengora-v0.1.5
 ```
 
 This triggers the `publish-gengora.yml` workflow.
 
-#### C# Test Filter
+#### Publishing C# Test Filter
 
 ```bash
 git tag csharp-test-filter-v1.0.5
@@ -76,12 +80,14 @@ You can also trigger workflows manually from GitHub Actions with the `workflow_d
 ### Setup
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/blue-it-systems/bits.vscode.git
    cd bits.vscode
    ```
 
 2. Install dependencies for an extension:
+
    ```bash
    # For C# Test Filter
    cd csharp-test-filter
@@ -95,6 +101,7 @@ You can also trigger workflows manually from GitHub Actions with the `workflow_d
    ```
 
 3. Open VS Code at repository root:
+
    ```bash
    code .
    ```
@@ -105,7 +112,7 @@ The workspace is configured with debug tasks for each extension.
 
 ### Building
 
-#### C# Test Filter
+#### Building C# Test Filter
 
 ```bash
 cd csharp-test-filter
@@ -113,7 +120,7 @@ npm run compile
 npm run package  # Creates .vsix
 ```
 
-#### Gengora
+#### Building Gengora
 
 ```bash
 # Build server
@@ -139,4 +146,4 @@ MIT License - see individual extension folders for details.
 
 ---
 
-**Made with ❤️ by Blue IT Systems GmbH**
+Made with ❤️ by Blue IT Systems GmbH

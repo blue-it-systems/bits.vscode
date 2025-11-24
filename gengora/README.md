@@ -1,6 +1,6 @@
 # Gengora - Live Code Generator for VS Code
 
-**Real-time code generation with hot-reload support**
+## Real-time code generation with hot-reload support
 
 Gengora is a Visual Studio Code extension that watches your generator project and automatically recompiles and reruns it whenever you make changes. Perfect for iterative development of code generators, scaffolding tools, and template processors.
 
@@ -23,12 +23,14 @@ Gengora is a Visual Studio Code extension that watches your generator project an
 ## 📦 Installation
 
 ### From VS Code Marketplace
+
 1. Open VS Code
 2. Press `Ctrl+P` / `Cmd+P`
 3. Type: `ext install bits.gengora`
 4. Press Enter
 
 ### From VSIX
+
 1. Download the latest `.vsix` from [Releases](https://github.com/blue-it-systems/bits.vscode/releases)
 2. In VS Code: `Extensions` → `...` → `Install from VSIX...`
 
@@ -61,6 +63,7 @@ Add this to your `.csproj`:
 ### 3. Write Your Generator
 
 **Program.cs**:
+
 ```csharp
 using System;
 using System.IO;
@@ -134,28 +137,28 @@ Gengora will:
 
 ### Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
-│                    VS Code Extension                         │
-│  • File Watchers (*.cs, *.csproj)                          │
-│  • Status Bar & Output Channel                             │
-└────────────┬────────────────────────────────────────────────┘
-             │ LSP Protocol
-             ↓
+│                    VS Code Extension                        │
+│  • File Watchers (*.cs, *.csproj)                           │
+│  • Status Bar & Output Channel                              │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ LSP Protocol
+                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   LSP Server (.NET 8.0)                      │
+│                   LSP Server (.NET 8.0)                     │
 │  • Observes generator project folder                        │
-│  • Runs: dotnet build --configuration Debug                │
-│  • Copies to: .vscode/.generator/out/                      │
-│  • Spawns generator process with workspace as working dir  │
-└────────────┬────────────────────────────────────────────────┘
-             │ Process spawn
-             ↓
+│  • Runs: dotnet build --configuration Debug                 │
+│  • Copies to: .vscode/.generator/out/                       │
+│  • Spawns generator process with workspace as working dir   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Process spawn
+                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              Your Generator Process                          │
+│              Your Generator Process                         │
 │  • Runs in workspace root directory                         │
-│  • Generates files (typically to ../gengora-output/)       │
-│  • Sends JSON events to stdout                             │
+│  • Generates files (typically to ../gengora-output/)        │
+│  • Sends JSON events to stdout                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -163,13 +166,16 @@ Gengora will:
 
 Gengora uses a three-level observation system:
 
+```text
 1. **GlobalScan**: Initial workspace scan to find generator project
 2. **MinimalObservation**: Watches only `.csproj` file (when marker is absent)
 3. **FullObservation**: Watches all files in generator folder (when marker is present)
+```
 
 ### File Watching
 
 The extension automatically ignores:
+
 - `/bin/` - Build outputs
 - `/obj/` - Intermediate build files
 - `/node_modules/` - Node dependencies
@@ -199,8 +205,8 @@ You can add custom ignore patterns:
 | `gengora.generatorProjectPath` | `string` | `""` | Path to generator .csproj (auto-detected if empty) |
 | `gengora.serverPath` | `string` | `""` | Custom LSP server path (for development) |
 | `gengora.fileWatchIgnorePatterns` | `string[]` | `[]` | Additional glob patterns to ignore |
-| `gengora.autoRunOnCompileSuccess` | `boolean` | `false` | Auto-start on compile (not recommended) |
-| `gengora.logLevel` | `string` | `"info"` | Log verbosity: `error`, `warning`, `info`, `debug` |
+| `gengora.autoRunOnCompileSuccess` | `boolean` | `false` | Auto-start on compile (deprecated - server auto-starts) |
+| `gengora.logLevel` | `string` | `"warning"` | Log verbosity: `error`, `warning`, `info`, `debug` |
 
 ### Example workspace settings.json
 
@@ -281,7 +287,6 @@ Generators communicate with Gengora via JSON messages on stdout:
 - **Don't generate in same folder**: Avoid creating files inside your generator project (causes compilation conflicts)
 - **Don't ignore errors**: Always handle exceptions and report them
 - **Don't use blocking I/O**: Avoid long-running processes without progress updates
-- **Don't enable auto-start**: Server already initializes automatically
 
 ### Example .gitignore
 
@@ -365,10 +370,11 @@ MIT License - see [LICENSE](../LICENSE) file
 ## 🙏 Acknowledgments
 
 Built with:
+
 - [OmniSharp Language Server Protocol](https://github.com/OmniSharp/csharp-language-server-protocol)
 - [VS Code Extension API](https://code.visualstudio.com/api)
 - [.NET SDK](https://dotnet.microsoft.com/)
 
 ---
 
-**Made with ❤️ by Blue IT Systems GmbH**
+Made with ❤️ by Blue IT Systems GmbH
