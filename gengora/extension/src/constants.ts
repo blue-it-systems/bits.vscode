@@ -134,6 +134,13 @@ export const FilePatterns = {
 } as const;
 
 /**
+ * Project discovery marker used inside .csproj files
+ */
+export const Patterns = {
+    GENERATOR_PROJECT_MARKER: '<IsGeneratorProject>true</IsGeneratorProject>'
+} as const;
+
+/**
  * CLI arguments for server startup
  */
 export const CliArgs = {

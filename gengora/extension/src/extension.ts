@@ -155,7 +155,9 @@ function createWatchers(
     const watchers = new Map<string, vscode.FileSystemWatcher>();
     
     for (const pattern of patterns) {
-        const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+        // If a project folder is provided, create a RelativePattern to scope watchers to the project folder
+        const glob = projectFolder ? new vscode.RelativePattern(projectFolder, pattern) : pattern;
+        const watcher = vscode.workspace.createFileSystemWatcher(glob as any);
         watchers.set(pattern, watcher);
         logger(`Created watcher for pattern: ${pattern}`);
     }
@@ -198,8 +200,8 @@ export async function activate(context: vscode.ExtensionContext) {
         statusBar.show();
         context.subscriptions.push(statusBar);
 
-        // Find workspace root
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        // Find workspace root (we'll prefer the generator project folder if we auto-discover it)
+        let workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) {
             const msg = 'No workspace folder opened. Please open a folder containing your generator project.';
             log(LogLevel.Error, msg);
@@ -211,12 +213,48 @@ export async function activate(context: vscode.ExtensionContext) {
         log(LogLevel.Debug, `Workspace root: ${workspaceRoot}`);
 
         // Get user-specified project path (if any)
-        const configuredProjectPath = config.get<string>('generatorProjectPath') || '';
+        let configuredProjectPath = config.get<string>('generatorProjectPath') || '';
         
         if (configuredProjectPath) {
             log(LogLevel.Info, `Using configured generator project path: ${configuredProjectPath}`);
         } else {
             log(LogLevel.Info, 'Auto-discovering generator project via marker...');
+        }
+
+        // If not explicitly configured, scan ALL workspace folders for a .csproj that contains the generator marker
+        if (!configuredProjectPath) {
+            try {
+                const marker = Constants.Patterns.GENERATOR_PROJECT_MARKER.toLowerCase();
+                const candidates = await vscode.workspace.findFiles('**/*.csproj', undefined, 500);
+
+                // Prefer any candidate within the primary workspaceRoot folder
+                let found: string | undefined;
+
+                for (const uri of candidates) {
+                    try {
+                        const content = fs.readFileSync(uri.fsPath, 'utf-8');
+                        if (content.toLowerCase().includes(marker)) {
+                            // Save first candidate
+                            found = uri.fsPath;
+                            // If found inside primary workspace folder, pick it immediately
+                            if (workspaceRoot && uri.fsPath.startsWith(workspaceRoot)) {
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // ignore read errors
+                    }
+                }
+
+                if (found) {
+                    configuredProjectPath = found;
+                    // prefer server workspace root to be the project folder for accurate scanning
+                    workspaceRoot = path.dirname(found);
+                    log(LogLevel.Info, `Auto-discovered generator project: ${found}`);
+                }
+            } catch (err) {
+                log(LogLevel.Debug, `Auto-discovery scan failed: ${String(err)}`);
+            }
         }
 
         // Find server DLL - check bundled location first, then dev location
@@ -260,7 +298,8 @@ export async function activate(context: vscode.ExtensionContext) {
         const isDll = serverPath.toLowerCase().endsWith('.dll');
         const serverEnv = {
             ...process.env,
-            ...(configuredProjectPath && { GENERATOR_PROJECT_PATH: configuredProjectPath })
+            ...(configuredProjectPath && { GENERATOR_PROJECT_PATH: configuredProjectPath }),
+            GENGORA_MANUALLY_STOPPED: isManuallyStopped ? 'true' : 'false'
         };
         
         const serverOptions = isDll 
@@ -288,20 +327,8 @@ export async function activate(context: vscode.ExtensionContext) {
         await client.start();
         log(LogLevel.Info, 'Language client started');
 
-        // Auto-start server unless user manually stopped it previously
-        if (!isManuallyStopped) {
-            log(LogLevel.Info, 'Auto-starting generator (not manually stopped)...');
-            try {
-                await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for server initialization
-                if (client && client.isRunning()) {
-                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
-                }
-            } catch (error: any) {
-                log(LogLevel.Warning, `Auto-start failed: ${error?.message ?? error}`);
-            }
-        } else {
-            log(LogLevel.Info, 'Skipping auto-start (server was manually stopped in previous session)');
-        }
+        // Server will handle auto-start on initialization. The extension no longer sends an explicit start command
+        // to avoid duplicate start requests. Server respects initial workspace state regarding manual stop.
 
         // Register notification handlers
         client.onNotification(Constants.Notifications.GENERATOR_STDOUT, (params: any) => {
@@ -343,12 +370,17 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Create new watchers for full observation
                 const patterns = ['**/*.cs', '**/*.csproj', '**/*.json'];
                 fileWatchers = createWatchers(patterns, projectFolder, excludePatterns, (msg) => log(LogLevel.Debug, msg));
+                // Attach handlers for these new watchers so changes are forwarded
+                attachWatcherHandlers();
+                context.subscriptions.push(...Array.from(fileWatchers.values()));
             } else if (mode === 'MinimalObservation') {
                 // Generator not found - only watch for .csproj files
                 log(LogLevel.Info, 'Switching to minimal file watching (only .csproj files)');
                 
                 disposeAllWatchers((msg) => log(LogLevel.Debug, msg));
                 fileWatchers = createWatchers(['**/*.csproj'], undefined, [], (msg) => log(LogLevel.Debug, msg));
+                attachWatcherHandlers();
+                context.subscriptions.push(...Array.from(fileWatchers.values()));
             }
         });
 
@@ -418,12 +450,26 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         };
 
-        // Initialize minimal watchers (only .csproj)
-        log(LogLevel.Info, 'Initializing minimal file watchers (waiting for generator marker)...');
-        fileWatchers = createWatchers(['**/*.csproj'], undefined, [], (msg) => log(LogLevel.Debug, msg));
+        // Initialize watchers based on pre-start discovery
+        if (configuredProjectPath) {
+            // We auto-discovered a generator project before language client started — create full watchers scoped to that project
+            const projectFolder = path.dirname(configuredProjectPath);
+            log(LogLevel.Info, `Initializing full file watchers for discovered project: ${projectFolder}`);
+            const config = vscode.workspace.getConfiguration('gengora');
+            const userPatterns = config.get<string[]>(Constants.ConfigKeys.EXCLUDE_PATTERNS) || Array.from(Constants.Defaults.IGNORE_PATTERNS);
+            const mergeGitignore = config.get<boolean>(Constants.ConfigKeys.MERGE_GITIGNORE) ?? true;
+            const excludePatterns = mergeExcludePatterns(userPatterns, projectFolder, mergeGitignore);
+
+            const patterns = ['**/*.cs', '**/*.csproj', '**/*.json'];
+            fileWatchers = createWatchers(patterns, projectFolder, excludePatterns, (msg) => log(LogLevel.Debug, msg));
+        } else {
+            // Initialize minimal watchers (only .csproj)
+            log(LogLevel.Info, 'Initializing minimal file watchers (waiting for generator marker)...');
+            fileWatchers = createWatchers(['**/*.csproj'], undefined, [], (msg) => log(LogLevel.Debug, msg));
+        }
         
         // Attach handlers to all watchers
-        const attachWatcherHandlers = () => {
+        function attachWatcherHandlers() {
             for (const watcher of fileWatchers.values()) {
                 watcher.onDidChange((uri) => forwardFileChange(uri, 2)); // Changed
                 watcher.onDidCreate((uri) => forwardFileChange(uri, 1)); // Created

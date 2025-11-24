@@ -105,8 +105,6 @@ public class ProcessManager
                 {
                     // Ignore event handler failures
                 }
-                
-                await Console.Error.WriteLineAsync("[Gengora] " + line);
             }
 
             // drain error stream
@@ -125,8 +123,6 @@ public class ProcessManager
                 {
                     // Ignore event handler failures
                 }
-                
-                await Console.Error.WriteLineAsync("[Gengora ERROR] " + line);
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)

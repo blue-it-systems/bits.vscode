@@ -311,8 +311,9 @@ obj/
 ### Generator not discovered?
 
 1. Check `.csproj` has `<IsGeneratorProject>true</IsGeneratorProject>`
-2. Check Output → Gengora for discovery logs
-3. Try manual configuration: `"gengora.generatorProjectPath": "path/to/project.csproj"`
+2. Gengora will scan across all open workspace folders (multi-root workspaces) and will try to auto-discover any `.csproj` containing the marker before starting the server. If your project lives in an additional workspace folder (not the primary one) it will now be detected automatically; the extension will set the discovered project path and instruct the server to use that folder as the workspace.
+3. Check Output → Gengora for discovery logs
+4. Try manual configuration: `"gengora.generatorProjectPath": "path/to/project.csproj"`
 
 ### Files not triggering rebuild?
 

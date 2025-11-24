@@ -118,6 +118,37 @@ public class GeneratorManager(string workspaceRoot)
     }
 
     /// <summary>
+    /// Attempts to treat the given path as a generator project (.csproj) and open it
+    /// if it contains the generator marker. Returns true when successfully set.
+    /// </summary>
+    public async Task<bool> TryOpenProjectAtPathAsync(string csprojPath, CancellationToken ct)
+    {
+        try
+        {
+            if (String.IsNullOrEmpty(csprojPath)) return false;
+
+            var projectPath = Path.IsPathRooted(csprojPath) ? csprojPath : Path.Combine(this._WorkspaceRoot, csprojPath);
+
+            if (!File.Exists(projectPath) || !projectPath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (await this.IsGeneratorProjectAsync(projectPath, ct))
+            {
+                this._GeneratorProjectPath = projectPath;
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Cleans the build output for the generator project.
     /// </summary>
     public async Task<bool> CleanGeneratorAsync(CancellationToken ct)

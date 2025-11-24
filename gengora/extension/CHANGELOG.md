@@ -2,7 +2,20 @@
 
 All notable changes to the Gengora extension will be documented in this file.
 
+## [0.1.7] - 2025-11-24
+
 ## [0.1.6] - 2025-11-24
+
+### Fixed
+
+- **Multi-root discovery**: Extension now scans all open workspace folders for .csproj files containing the `<IsGeneratorProject>true</IsGeneratorProject>` marker before starting the server. When a project is discovered it's passed to the server via the GENERATOR_PROJECT_PATH environment variable and the server workspace root is set to the project folder for reliable initialization.
+
+- **Server: Pick up project on CSProj changes**: If no project was previously loaded, the server will now attempt to treat a newly created/changed `.csproj` file as a candidate generator project (if it contains the marker) and auto-start it. This fixes cases where the generator is in a non-primary or additional workspace folder.
+
+### Notes
+
+- Improved logging and troubleshooting information for multi-root workspaces.
+
 
 ### Added
 

@@ -51,8 +51,20 @@ internal class Program
                 (
                     async (server, request, response, cancellationToken) =>
                     {
-                        // Do NOT auto-start - wait for explicit user command
-                        // This allows users to manually control when the generator starts
+                        // Auto-discover and start generator project on initialization
+                        // But respect manual stop state passed in via environment variable
+                        var generatorService = server.GetRequiredService<IGeneratorService>();
+                        var manualFlag = Environment.GetEnvironmentVariable("GENGORA_MANUALLY_STOPPED");
+                        var manual = !string.IsNullOrEmpty(manualFlag) && (manualFlag.Equals("true", StringComparison.OrdinalIgnoreCase) || manualFlag == "1");
+
+                        if (!manual)
+                        {
+                            await generatorService.StartGeneratorAsync(cancellationToken);
+                        }
+                        else
+                        {
+                            await Console.Error.WriteLineAsync("[Gengora] Skipping auto-start due to manual stop state");
+                        }
                     }
                 )
         );

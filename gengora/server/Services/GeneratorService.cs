@@ -47,7 +47,10 @@ public class GeneratorService : IGeneratorService
         this._LanguageServer = languageServer;
         this._GeneratorCapabilities = new GeneratorCapabilities();
         this._IsPaused = false;
-        this._IsManuallyStopped = false;
+
+        // Initialize manual stop state from environment so server startup can respect user choice
+        var manualFlag = Environment.GetEnvironmentVariable("GENGORA_MANUALLY_STOPPED");
+        this._IsManuallyStopped = !string.IsNullOrEmpty(manualFlag) && (manualFlag.Equals("true", StringComparison.OrdinalIgnoreCase) || manualFlag == "1");
 
         // Wire up process output handlers
         this._ProcessManager.OnStdout += this.HandleGeneratorStdoutLine;
@@ -78,7 +81,7 @@ public class GeneratorService : IGeneratorService
             // Clean build artifacts before starting to avoid corrupted state
             await this._GeneratorManager.CleanGeneratorAsync(CancellationToken.None);
             
-            if (!this._IsPaused)
+            if (!this._IsPaused && !this._IsManuallyStopped)
             {
                 await this.StartGeneratorAsync(CancellationToken.None);
             }
@@ -237,6 +240,23 @@ public class GeneratorService : IGeneratorService
         // If it's a .csproj file, recheck marker
         if (filePath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
         {
+            // If we don't currently have a project loaded, a new .csproj appearing
+            // might be the generator project - attempt to open it directly
+            if (string.IsNullOrEmpty(this._ObservationManager.CurrentProjectPath))
+            {
+                var opened = await this._GeneratorManager.TryOpenProjectAtPathAsync(filePath, cancellationToken);
+                if (opened)
+                {
+                    // Notify observation manager and start generator if appropriate
+                    await this._ObservationManager.SetGeneratorProjectAsync(filePath, cancellationToken);
+                    if (!this._IsPaused && !this._IsManuallyStopped)
+                    {
+                        await this.StartGeneratorAsync(cancellationToken);
+                    }
+                    return;
+                }
+            }
+
             await this._ObservationManager.RecheckMarkerAsync(cancellationToken);
         }
         
