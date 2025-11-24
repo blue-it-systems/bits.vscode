@@ -60,10 +60,15 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
             var filePath = change.Uri.GetFileSystemPath();
             if (string.IsNullOrEmpty(filePath)) continue;
             
-            // Check ignore patterns first
-            if (this.ShouldIgnoreFile(filePath))
+            // Do not ignore generator-produced files (special-case)
+            var fileName = Path.GetFileName(filePath) ?? string.Empty;
+            if (!fileName.StartsWith("generated-", StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                // Check ignore patterns first
+                if (this.ShouldIgnoreFile(filePath))
+                {
+                    continue;
+                }
             }
             
             // In FullObservation mode, only watch files in the generator project folder
@@ -71,7 +76,12 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
             {
                 if (!string.IsNullOrEmpty(projectFolder) && !filePath.StartsWith(projectFolder, StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    // Allow important generator output folders even if they're outside the project folder
+                    var normalized = filePath.Replace('\\', '/');
+                    if (!normalized.Contains("/gengora-output/") && !normalized.Contains("/.vscode/.generator/out/"))
+                    {
+                        continue;
+                    }
                 }
             }
             
@@ -91,6 +101,41 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
         {
             await Task.Delay(Constants.Timeouts.WATCH_DEBOUNCE_MS, this._DebounceCts.Token);
             
+            // First, detect any 'generated-*' files and forward them as generator/generated notifications
+            var generatedFiles = new List<string>();
+            foreach (var change in relevantChanges)
+            {
+                var p = change.Uri.GetFileSystemPath();
+                if (string.IsNullOrEmpty(p)) continue;
+
+                var name = Path.GetFileName(p) ?? string.Empty;
+                if (!string.IsNullOrEmpty(name) && name.StartsWith("generated-", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Only include create/changed events as actual generated activity
+                    if (change.Type == OmniSharp.Extensions.LanguageServer.Protocol.Models.FileChangeType.Created || change.Type == OmniSharp.Extensions.LanguageServer.Protocol.Models.FileChangeType.Changed)
+                    {
+                        generatedFiles.Add(p);
+                    }
+                }
+            }
+
+            if (generatedFiles.Count > 0)
+            {
+                // Send a structured notification to the client so editors can surface where files were generated
+                try
+                {
+                    this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_GENERATED, new
+                    {
+                        projectPath = projectFolder,
+                        created = generatedFiles
+                    });
+                }
+                catch
+                {
+                    // best effort - do not fail the handler
+                }
+            }
+
             // Handle file changes (check for marker changes, trigger recompilation if needed)
             foreach (var change in relevantChanges)
             {

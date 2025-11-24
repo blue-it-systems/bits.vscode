@@ -18,6 +18,8 @@ public class GeneratorService : IGeneratorService
     private readonly GeneratorCapabilities _GeneratorCapabilities;
     private bool _IsPaused;
     private bool _IsManuallyStopped; // Prevents auto-restart when user manually stops
+    private readonly List<System.IO.FileSystemWatcher> _OutputWatchers = new();
+    private readonly Dictionary<string, DateTime> _recentlyReported = new(StringComparer.OrdinalIgnoreCase);
     
     // Standard ignore patterns for file watching
     private static readonly string[] DefaultIgnorePatterns = new[]
@@ -61,6 +63,124 @@ public class GeneratorService : IGeneratorService
         {
             _ = this.HandleObservationModeChangedAsync(oldMode, newMode);
         };
+    }
+
+    private void StartOutputWatchers(string projectFolder)
+    {
+        if (string.IsNullOrEmpty(projectFolder)) return;
+
+        StopOutputWatchers();
+
+        // Candidate directories to watch for generated files
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Project folder itself - many generators may emit into output folders under the project
+        candidates.Add(projectFolder);
+
+        // Common output folder within project
+        candidates.Add(Path.Combine(projectFolder, Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER));
+
+        // Search upward for repo-level gengora-output within a few parent levels
+        var parent = Directory.GetParent(projectFolder);
+        var levels = 0;
+        while (parent != null && levels < 6)
+        {
+            // Add the parent folder itself so we catch newly-created gengora-output directories
+            candidates.Add(parent.FullName);
+
+            var candidate = Path.Combine(parent.FullName, "gengora-output");
+            if (Directory.Exists(candidate))
+            {
+                candidates.Add(candidate);
+            }
+
+            parent = parent.Parent;
+            levels++;
+        }
+
+        foreach (var dir in candidates)
+        {
+            if (string.IsNullOrEmpty(dir)) continue;
+            // Prefer explicit out subfolder if it exists
+            var pathToWatch = dir;
+            if (Directory.Exists(Path.Combine(dir, Constants.Directories.OUT_FOLDER)))
+            {
+                pathToWatch = Path.Combine(dir, Constants.Directories.OUT_FOLDER);
+            }
+
+            try
+            {
+                if (!Directory.Exists(pathToWatch)) continue;
+
+                var watcher = new System.IO.FileSystemWatcher(pathToWatch)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = System.IO.NotifyFilters.FileName | System.IO.NotifyFilters.CreationTime | System.IO.NotifyFilters.LastWrite
+                };
+
+                watcher.Created += (s, e) => _ = Task.Run(() => OnGeneratedFileDetected(e.FullPath, projectFolder));
+                watcher.Changed += (s, e) => _ = Task.Run(() => OnGeneratedFileDetected(e.FullPath, projectFolder));
+
+                watcher.EnableRaisingEvents = true;
+                this._OutputWatchers.Add(watcher);
+            }
+            catch
+            {
+                // ignore watcher failures
+            }
+        }
+    }
+
+    private void StopOutputWatchers()
+    {
+        foreach (var w in this._OutputWatchers)
+        {
+            try
+            {
+                w.EnableRaisingEvents = false;
+                w.Dispose();
+            }
+            catch { }
+        }
+
+        this._OutputWatchers.Clear();
+        this._recentlyReported.Clear();
+    }
+
+    private async Task OnGeneratedFileDetected(string fullPath, string projectPath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(fullPath)) return;
+
+            var fileName = Path.GetFileName(fullPath) ?? string.Empty;
+            if (!fileName.StartsWith("generated-", StringComparison.OrdinalIgnoreCase)) return;
+
+            // Deduplicate within a short window
+            lock (_recentlyReported)
+            {
+                if (_recentlyReported.TryGetValue(fullPath, out var ts))
+                {
+                    if ((DateTime.UtcNow - ts).TotalSeconds < 2) return;
+                }
+
+                _recentlyReported[fullPath] = DateTime.UtcNow;
+            }
+
+            // Notify client about generated files
+            this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_GENERATED, new
+            {
+                project = projectPath,
+                created = new[] { fullPath }
+            });
+
+            // Log to stderr to help debugging when running without a client
+            await Console.Error.WriteLineAsync($"[Gengora] Generated file detected: {fullPath}");
+        }
+        catch
+        {
+            // Swallow any watcher errors
+        }
     }
 
     private async Task HandleObservationModeChangedAsync(ObservationMode oldMode, ObservationMode newMode)
@@ -175,6 +295,16 @@ public class GeneratorService : IGeneratorService
         await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken);
         
         await this.SendStatusAsync(Constants.States.RUNNING, null, assemblyPath, cancellationToken);
+
+        // Start file system watchers to detect any 'generated-*' output produced by the generator
+        try
+        {
+            StartOutputWatchers(workspaceRoot);
+        }
+        catch
+        {
+            // best effort - do not fail startup
+        }
     }
 
     public async Task StopGeneratorAsync(CancellationToken cancellationToken)
@@ -184,6 +314,9 @@ public class GeneratorService : IGeneratorService
         await this.SendStatusAsync(Constants.States.STOPPING, null, null, cancellationToken);
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
         await this.SendStatusAsync(Constants.States.STOPPED, null, null, cancellationToken);
+
+        // Stop any file watchers attached to the generator output
+        try { StopOutputWatchers(); } catch { }
     }
 
     public async Task PauseGeneratorAsync(CancellationToken cancellationToken)
@@ -191,6 +324,8 @@ public class GeneratorService : IGeneratorService
         this._IsPaused = true;
         await this.SendStatusAsync(Constants.States.PAUSED, "Generator paused", null, cancellationToken);
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
+
+        try { StopOutputWatchers(); } catch { }
     }
 
     public async Task RestartGeneratorAsync(CancellationToken cancellationToken)

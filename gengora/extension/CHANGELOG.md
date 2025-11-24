@@ -16,6 +16,44 @@ All notable changes to the Gengora extension will be documented in this file.
 
 ## [0.1.6] - 2025-11-24
 
+## [0.1.9] - 2025-11-24
+
+### Fixed
+
+- Activation shouldn't error if no generator project is found: Server initialization no longer attempts to auto-start compilation when a generator project is absent. Instead, the server enters scan/minimal observation mode (waiting for a generator to appear) and avoids emitting an error status during activation.
+
+### Notes
+
+- This reduces noisy activation failures when opening workspaces that don't yet contain a generator project; extension will continue to register minimal file watchers and wait for a generator to be added.
+
+## [0.1.10] - 2025-11-24
+
+### Added
+
+- Surface generator structured notifications: extension now handles `generator/hello` and `generator/generated` notifications emitted by generator processes. These are logged to the Gengora output channel and a small info message allows the user to open the output or reveal the generated file.
+
+### Fixed / Improved
+
+- Improved E2E tooling and CI-friendly single-file tooling: added robust C# single-file E2E and smoke test tools (net10/.net8 fallback) and refactored tests to avoid broad filesystem scans and permission errors.
+
+### Notes
+
+- This release is primarily quality-of-life improvements for diagnostics and dev tooling to make it easier to see generator activity in the editor while keeping generated output excluded by default to avoid rebuild loops.
+
+## [0.1.11] - 2025-11-24
+
+### Added
+
+- Server-side detection of generated files: the language server now watches common output locations (project .vscode/.generator/out and repository gengora-output) and forwards `generator/generated` notifications to the client when files matching `generated-*` are created. This ensures editor UIs will see generated file paths even if the generator process itself doesn't emit structured notifications.
+
+### Fixed / Improved
+
+- DidChangeWatchedFiles handling: the server no longer globally ignores `generated-*` files and will deliver `generator/generated` notifications when changes are observed. This improves visibility for generator toolchains that place output outside the generator project.
+
+### Notes
+
+- These notifications are forwarded to the extension and surfaced in the Gengora output channel. Generated files are still excluded by default from file watchers to avoid rebuild loops.
+
 ### Fixed
 
 - **Multi-root discovery**: Extension now scans all open workspace folders for .csproj files containing the `<IsGeneratorProject>true</IsGeneratorProject>` marker before starting the server. When a project is discovered it's passed to the server via the GENERATOR_PROJECT_PATH environment variable and the server workspace root is set to the project folder for reliable initialization.

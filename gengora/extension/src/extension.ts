@@ -339,6 +339,48 @@ export async function activate(context: vscode.ExtensionContext) {
             log(LogLevel.Warning, `[Gengora stderr] ${params.text ?? String(params)}`);
         });
 
+        // Structured notifications from generators - handshake and generated events
+        client.onNotification(Constants.Notifications.GENERATOR_HELLO, (params: any) => {
+            try {
+                log(LogLevel.Info, `[Generator hello] capabilities: ${JSON.stringify(params?.capabilities ?? params)} `);
+            } catch (e) {
+                log(LogLevel.Debug, `[Generator hello] ${String(params)}`);
+            }
+        });
+
+        client.onNotification(Constants.Notifications.GENERATOR_GENERATED, (params: any) => {
+            const project = params?.project ?? params?.projectPath ?? '';
+            const createdRaw = params?.created ?? params?.files ?? [];
+            const created = Array.isArray(createdRaw) ? createdRaw : [createdRaw].filter(Boolean);
+
+            if (created.length > 0) {
+                log(LogLevel.Info, `[Generator] Created ${created.length} file(s) under ${project}`);
+                for (const f of created) {
+                    log(LogLevel.Info, `  • ${f}`);
+                }
+
+                // Give user a gentle hint so they can view results
+                const actionShow = 'Show Output (Gengora)';
+                const actionReveal = 'Reveal First File';
+                vscode.window.showInformationMessage(`Gengora: generator produced ${created.length} file(s)`, actionShow, actionReveal)
+                    .then(choice => {
+                        if (!choice) return;
+                        if (choice === actionShow) {
+                            output.show(true);
+                        } else if (choice === actionReveal && created.length > 0) {
+                            try {
+                                const uri = vscode.Uri.file(created[0]);
+                                vscode.commands.executeCommand('revealFileInOS', uri);
+                            } catch (e) {
+                                output.appendLine(`[WARN] failed to reveal file: ${String(e)}`);
+                            }
+                        }
+                    });
+            } else {
+                log(LogLevel.Info, `[Generator] Created event received for project ${project} (no files listed)`);
+            }
+        });
+
         client.onNotification(Constants.Notifications.GENERATOR_PROJECT_DISCOVERED, (params: any) => {
             const projectPath = params?.projectPath ?? '';
             if (projectPath) {

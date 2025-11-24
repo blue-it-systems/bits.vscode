@@ -2,7 +2,7 @@
   "name": "gengora",
   "displayName": "Gengora - Live Code Generator",
   "description": "Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly.",
-  "version": "0.1.8",
+  "version": "0.1.11",
   "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",

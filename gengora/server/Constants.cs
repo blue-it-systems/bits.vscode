@@ -38,6 +38,7 @@ internal static class Constants
         public const string GENERATOR_STDOUT = "$/generator.stdout";
         public const string GENERATOR_STDERR = "$/generator.stderr";
         public const string GENERATOR_HELLO = "generator/hello";
+        public const string GENERATOR_GENERATED = "generator/generated";
         public const string GENERATOR_PUBLISH_DIAGNOSTICS = "generator/publishDiagnostics";
         public const string GENERATOR_PUBLISH_DIAGNOSTICS_ALT = "generator.publishDiagnostics";
         public const string OBSERVATION_MODE_CHANGED = "generator/observationModeChanged";

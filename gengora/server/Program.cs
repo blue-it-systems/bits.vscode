@@ -68,16 +68,38 @@ internal class Program
                         // Auto-discover and start generator project on initialization
                         // But respect manual stop state passed in via environment variable
                         var generatorService = server.GetRequiredService<IGeneratorService>();
+                        var generatorManager = server.GetRequiredService<GeneratorManager>();
+                        var observationManager = server.GetRequiredService<ObservationManager>();
+
                         var manualFlag = Environment.GetEnvironmentVariable("GENGORA_MANUALLY_STOPPED");
                         var manual = !string.IsNullOrEmpty(manualFlag) && (manualFlag.Equals("true", StringComparison.OrdinalIgnoreCase) || manualFlag == "1");
 
-                        if (!manual)
-                        {
-                            await generatorService.StartGeneratorAsync(cancellationToken);
-                        }
-                        else
+                        if (manual)
                         {
                             await Console.Error.WriteLineAsync("[Gengora] Skipping auto-start due to manual stop state");
+                            return;
+                        }
+
+                        try
+                        {
+                            // Try to find a generator project in the workspace; only start the generator if one is found.
+                            var found = await generatorManager.FindAndOpenGeneratorProjectAsync(cancellationToken);
+
+                            if (found)
+                            {
+                                await generatorService.StartGeneratorAsync(cancellationToken);
+                            }
+                            else
+                            {
+                                // No project found - stay in scan mode / minimal observation and do not emit an error status.
+                                await Console.Error.WriteLineAsync("[Gengora] No generator project found during initialization - entering scan/minimal observation mode");
+                                // Ensure ObservationManager is set into GlobalScan mode
+                                await observationManager.SetGeneratorProjectAsync(null, cancellationToken);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            await Console.Error.WriteLineAsync($"[Gengora] Initialization check failed: {ex.Message}");
                         }
                     }
                 )

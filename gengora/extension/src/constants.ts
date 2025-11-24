@@ -11,6 +11,7 @@ export const Notifications = {
     GENERATOR_STDOUT: '$/generator.stdout',
     GENERATOR_STDERR: '$/generator.stderr',
     GENERATOR_ERROR: 'generator/error',
+    GENERATOR_GENERATED: 'generator/generated',
     GENERATOR_HELLO: 'generator/hello',
     OBSERVATION_MODE_CHANGED: 'generator/observationModeChanged',
     GENERATOR_PROJECT_DISCOVERED: 'generator/projectDiscovered',

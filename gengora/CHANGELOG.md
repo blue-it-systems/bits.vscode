@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Generator execution working directory: the language server sets its working directory to the workspace root provided at startup so generator processes run with the generator project's folder as their working directory.
 
+## [0.1.9] - 2025-11-24
+
+### Fixed
+
+- Server initialization no longer triggers an error status when no generator project is found. The server will enter scan/minimal observation mode and wait for generators to appear instead of attempting to compile immediately and emitting an error.
+
+
 
 ### Added
 
@@ -56,6 +63,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Process Management**: WorkingDirectory support for correct file generation location
 
 ## [0.1.0] - 2025-11-20
+
+## [0.1.10] - 2025-11-24
+
+### Added
+
+- Extension: surface generator structured notifications (`generator/hello`, `generator/generated`) in the Gengora output channel and small info prompts so users can quickly open the output or reveal generated files.
+- Tooling: improved end-to-end test tooling and added single-file C# E2E and smoke test scripts that avoid broad filesystem scanning and permission issues.
+
+### Notes
+
+- These improvements are quality-of-life for development and debugging; generated output is still excluded by default to avoid rebuild loops but is now surfaced to the user via the output channel and notification actions.
+
+## [0.1.11] - 2025-11-24
+
+### Added
+
+- Server-side detection of generated files: the language server will watch common output locations and send `generator/generated` notifications when `generated-*` files appear. This lets clients surface generated file paths even when generators do not emit structured events directly.
+
+### Note
+
+- Watchers attempt to be conservative and watch a limited set of candidate directories (project .vscode/.generator/out, parent directories and repository gengora-output) to avoid broad system scans.
 
 ### Added
 
