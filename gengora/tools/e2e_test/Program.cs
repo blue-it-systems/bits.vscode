@@ -63,6 +63,24 @@ public static class Program
             return 2;
         }
 
+        // Mirror server stderr to this process' stdout for easier debugging in e2e runs
+        _ = Task.Run(async () =>
+        {
+            var sr = proc.StandardError;
+            try
+            {
+                string? line;
+                while ((line = await sr.ReadLineAsync()) != null)
+                {
+                    Console.WriteLine("ERR << " + line);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("ERR-READ << " + ex.Message);
+            }
+        });
+
         try
         {
             // Initialize LSP
@@ -102,8 +120,8 @@ public static class Program
             Console.WriteLine("[e2e_test] Notifying server of created csproj " + uri);
             await SendLspAsync(proc.StandardInput.BaseStream, notify);
 
-            Console.WriteLine("[e2e_test] Waiting for compile/run...");
-            var msgs2 = await ReadLspMessagesAsync(proc.StandardOutput.BaseStream, TimeSpan.FromSeconds(30));
+            Console.WriteLine("[e2e_test] Waiting for compile/run (extended timeout)...");
+            var msgs2 = await ReadLspMessagesAsync(proc.StandardOutput.BaseStream, TimeSpan.FromSeconds(90));
             foreach (var m in msgs2)
             {
                 Console.WriteLine("MSG << " + m);

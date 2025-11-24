@@ -33,8 +33,9 @@ class Program
             Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(hello));
 
             // Create a generated project folder OUTSIDE the generator project
-            // Navigate up from test-workspace to bits.vscode root, then create in gengora-output/
-            var workspaceRoot = Directory.GetParent(cwd)?.Parent?.FullName ?? cwd;
+            // Place generated output next to the generator project's parent folder (a sibling directory).
+            // e.g. if generator is at <repo>/test-workspace, generated projects will be placed in <repo>/gengora-output
+            var workspaceRoot = Directory.GetParent(cwd)?.FullName ?? cwd;
             var outputRoot = Path.Combine(workspaceRoot, "gengora-output");
             Directory.CreateDirectory(outputRoot);
             

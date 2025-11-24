@@ -1,5 +1,7 @@
 # Change Log
 
+<!-- markdownlint-disable MD024 -->
+
 All notable changes to the Gengora extension will be documented in this file.
 
 ## [0.1.8] - 2025-11-24
@@ -26,42 +28,34 @@ All notable changes to the Gengora extension will be documented in this file.
 
 - This reduces noisy activation failures when opening workspaces that don't yet contain a generator project; extension will continue to register minimal file watchers and wait for a generator to be added.
 
-## [0.1.10] - 2025-11-24
+
+## [0.2.0] - 2025-11-24
 
 ### Added
 
-- Surface generator structured notifications: extension now handles `generator/hello` and `generator/generated` notifications emitted by generator processes. These are logged to the Gengora output channel and a small info message allows the user to open the output or reveal the generated file.
-
-### Fixed / Improved
-
-- Improved E2E tooling and CI-friendly single-file tooling: added robust C# single-file E2E and smoke test tools (net10/.net8 fallback) and refactored tests to avoid broad filesystem scans and permission errors.
+- Extension: surface generator structured notifications (`generator/hello`, `generator/generated`) in the Gengora output channel and small info prompts so users can quickly open the output or reveal generated files.
+- Server: server-side detection of generated files — the language server watches common output locations and forwards `generator/generated` notifications when `generated-*` files appear. Servers coordinate with a per-project ownership lock file so only the server instance that started a generator forwards generated-file events to its client (prevents mirrored notifications across separate VS Code windows).
+- Tooling: improved end-to-end test tooling and single-file C# E2E / smoke tests for CI-friendly runs.
 
 ### Notes
 
-- This release is primarily quality-of-life improvements for diagnostics and dev tooling to make it easier to see generator activity in the editor while keeping generated output excluded by default to avoid rebuild loops.
+- Generated files are still excluded by default from file watchers to avoid rebuild loops. Watchers remain conservative and limited to reasonable candidate locations.
 
-## [0.1.11] - 2025-11-24
 
-### Added
-
-- Server-side detection of generated files: the language server now watches common output locations (project .vscode/.generator/out and repository gengora-output) and forwards `generator/generated` notifications to the client when files matching `generated-*` are created. This ensures editor UIs will see generated file paths even if the generator process itself doesn't emit structured notifications.
-
-### Fixed / Improved
-
-- DidChangeWatchedFiles handling: the server no longer globally ignores `generated-*` files and will deliver `generator/generated` notifications when changes are observed. This improves visibility for generator toolchains that place output outside the generator project.
-
-### Notes
-
-- These notifications are forwarded to the extension and surfaced in the Gengora output channel. Generated files are still excluded by default from file watchers to avoid rebuild loops.
+## [0.2.1] - 2025-11-24
 
 ### Fixed
 
+- Multi-root discovery: the server now prefers an already-loaded project when the extension forwards a specific `.csproj` path, avoiding re-scanning the wrong workspace root and failing to start in multi-root scenarios.
+- Resiliency: Start/restart now uses a conservative retry policy (5 attempts, 10s interval) for build/emit/run failures, making warm/retry cycles more robust.
+- Diagnostics: Improved debug logging for .csproj scanning and TryOpenProjectAtPathAsync so discovery problems are visible in the Gengora output as useful traces.
+- Error forwarding: the server sends `generator/error` notifications with details and stack traces; the extension will log full stacks at debug level so you can inspect failures easily.
 - **Multi-root discovery**: Extension now scans all open workspace folders for .csproj files containing the `<IsGeneratorProject>true</IsGeneratorProject>` marker before starting the server. When a project is discovered it's passed to the server via the GENERATOR_PROJECT_PATH environment variable and the server workspace root is set to the project folder for reliable initialization.
-
 - **Server: Pick up project on CSProj changes**: If no project was previously loaded, the server will now attempt to treat a newly created/changed `.csproj` file as a candidate generator project (if it contains the marker) and auto-start it. This fixes cases where the generator is in a non-primary or additional workspace folder.
 
 ### Notes
 
+- This is a small patch release focused on reliability and diagnostics to make multi-root projects and flaky generator start more robust.
 - Improved logging and troubleshooting information for multi-root workspaces.
 
 

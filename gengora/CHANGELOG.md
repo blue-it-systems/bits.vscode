@@ -1,5 +1,7 @@
 # Changelog - Gengora
 
+<!-- markdownlint-disable MD024 -->
+
 All notable changes to the Gengora extension will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -21,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Server initialization no longer triggers an error status when no generator project is found. The server will enter scan/minimal observation mode and wait for generators to appear instead of attempting to compile immediately and emitting an error.
 
-
+- Double-build on startup: Disabled extension auto-start since server already initializes generator
+- Generated code compilation conflicts: Generator output excluded from generator project compilation
+- Infinite rebuild loops: Proper filtering of build output files
+- Wrong workspace opening: F5 debugging now opens correct test-workspace folder
+- File change detection: Observation mode properly set on server initialization
+- Process working directory: Generator creates files in correct location
 
 ### Added
 
@@ -64,35 +71,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2025-11-20
 
-## [0.1.10] - 2025-11-24
+
+## [0.2.0] - 2025-11-24
 
 ### Added
 
 - Extension: surface generator structured notifications (`generator/hello`, `generator/generated`) in the Gengora output channel and small info prompts so users can quickly open the output or reveal generated files.
+- Server: server-side detection of generated files — the language server will watch common output locations and send `generator/generated` notifications when `generated-*` files appear. Importantly, servers now coordinate using an ownership lock so only the server instance that started the generator will forward generated-file events to its client (prevents mirrored notifications across multiple VS Code windows).
 - Tooling: improved end-to-end test tooling and added single-file C# E2E and smoke test scripts that avoid broad filesystem scanning and permission issues.
 
 ### Notes
 
-- These improvements are quality-of-life for development and debugging; generated output is still excluded by default to avoid rebuild loops but is now surfaced to the user via the output channel and notification actions.
-
-## [0.1.11] - 2025-11-24
-
-### Added
-
-- Server-side detection of generated files: the language server will watch common output locations and send `generator/generated` notifications when `generated-*` files appear. This lets clients surface generated file paths even when generators do not emit structured events directly.
-
-### Note
-
 - Watchers attempt to be conservative and watch a limited set of candidate directories (project .vscode/.generator/out, parent directories and repository gengora-output) to avoid broad system scans.
 
-### Added
+## [0.2.1] - 2025-11-24
 
-- Initial release of Gengora
-- Basic LSP server architecture
-- Generator project compilation
-- File watching capabilities
-- Status bar integration
-- Output channel for logs
+### Fixed
+
+- Multi-root discovery: server now prefers pre-loaded .csproj paths forwarded by the client so projects living in additional workspace folders (e.g. bits.tenancy/test-workspace) are recognized correctly instead of being missed by a workspace scan.
+- Resilience: added retry behavior for StartGeneratorAsync (5 attempts, 10s intervals) to handle flaky builds/starts and emit helpful generator/error notifications during failures.
+- Diagnostics: much improved debug logging when scanning .csproj files and attempting to open projects so issues are visible in the Gengora output channel.
+
+
+<!-- NOTE: older 0.1.x release notes consolidated above; continuing from 0.1.9 → 0.2.0 -->
 
 ---
 

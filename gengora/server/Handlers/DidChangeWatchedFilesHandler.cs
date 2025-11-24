@@ -124,11 +124,17 @@ public class DidChangeWatchedFilesHandler : DidChangeWatchedFilesHandlerBase
                 // Send a structured notification to the client so editors can surface where files were generated
                 try
                 {
-                    this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_GENERATED, new
+                    // Only report generated files if we have a known project folder and this server instance
+                    // is permitted to report for it. If there's no current project, skip generated-file
+                    // notifications to avoid broadcasting events that can't be attributed to a project.
+                    if (!string.IsNullOrEmpty(projectFolder) && this._GeneratorService.CanReportGeneratedFilesForProject(projectFolder))
                     {
-                        projectPath = projectFolder,
-                        created = generatedFiles
-                    });
+                        this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_GENERATED, new
+                        {
+                            projectPath = projectFolder,
+                            created = generatedFiles
+                        });
+                    }
                 }
                 catch
                 {

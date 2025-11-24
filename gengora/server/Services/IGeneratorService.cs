@@ -41,4 +41,10 @@ public interface IGeneratorService
     /// Gets the current generator capabilities.
     /// </summary>
     GeneratorCapabilities GetCapabilities();
+
+    /// <summary>
+    /// Returns whether this server instance should report generated-file events for the supplied project folder.
+    /// This is used to prevent mirrored notifications across multiple VS Code instances that may watch the same repository.
+    /// </summary>
+    bool CanReportGeneratedFilesForProject(string? projectFolder);
 }

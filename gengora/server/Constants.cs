@@ -40,6 +40,7 @@ internal static class Constants
         public const string GENERATOR_HELLO = "generator/hello";
         public const string GENERATOR_GENERATED = "generator/generated";
         public const string GENERATOR_PUBLISH_DIAGNOSTICS = "generator/publishDiagnostics";
+        public const string GENERATOR_ERROR = "generator/error";
         public const string GENERATOR_PUBLISH_DIAGNOSTICS_ALT = "generator.publishDiagnostics";
         public const string OBSERVATION_MODE_CHANGED = "generator/observationModeChanged";
         public const string GENERATOR_PROJECT_DISCOVERED = "generator/projectDiscovered";
@@ -166,7 +167,10 @@ internal static class Constants
         public const int WATCH_DEBOUNCE_MS = 500;
         public const int MAIN_LOOP_DELAY_MS = 10;
         public const int PROCESS_CHECK_DELAY_MS = 200;
-        public const int DEFAULT_WATCH_DEBOUNCE_MS = 400;
+        public const int DEFAULT_WATCH_DEBOUNCE_MS = 2048;
+        // Retry behavior used when attempting to compile/start generators
+        public const int START_RETRY_COUNT = 5; // number of attempts
+        public const int START_RETRY_INTERVAL_MS = 10000; // 10 seconds
     }
 
     /// <summary>

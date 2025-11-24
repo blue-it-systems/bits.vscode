@@ -27,7 +27,10 @@ public class GeneratorManager(string workspaceRoot)
         try
         {
             var content = await File.ReadAllTextAsync(csprojPath, ct);
-            return content.Contains(Constants.Patterns.GENERATOR_PROJECT_MARKER, StringComparison.OrdinalIgnoreCase);
+            await Console.Error.WriteLineAsync($"[Gengora] Checking .csproj for marker: {csprojPath}");
+            var hasMarker = content.Contains(Constants.Patterns.GENERATOR_PROJECT_MARKER, StringComparison.OrdinalIgnoreCase);
+            await Console.Error.WriteLineAsync($"[Gengora] Marker present: {hasMarker} in {csprojPath}");
+            return hasMarker;
         }
         catch
         {
@@ -80,7 +83,9 @@ public class GeneratorManager(string workspaceRoot)
 
         // Priority 2: Auto-discovery - scan workspace for marker
         
+        await Console.Error.WriteLineAsync($"[Gengora] Scanning workspace for .csproj files under: {this._WorkspaceRoot}");
         var allCsprojs = Directory.GetFiles(this._WorkspaceRoot, "*" + Constants.Patterns.CSPROJ_EXTENSION, SearchOption.AllDirectories);
+        await Console.Error.WriteLineAsync($"[Gengora] Found {allCsprojs.Length} .csproj files while scanning");
         
         foreach (var csproj in allCsprojs)
         {
@@ -129,16 +134,22 @@ public class GeneratorManager(string workspaceRoot)
 
             var projectPath = Path.IsPathRooted(csprojPath) ? csprojPath : Path.Combine(this._WorkspaceRoot, csprojPath);
 
+            await Console.Error.WriteLineAsync($"[Gengora] TryOpenProjectAtPathAsync: resolved path = '{projectPath}' (rooted={Path.IsPathRooted(csprojPath)})");
+
             if (!File.Exists(projectPath) || !projectPath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
             {
+                await Console.Error.WriteLineAsync($"[Gengora] TryOpenProjectAtPathAsync: path does not exist or is not a .csproj: {projectPath}");
                 return false;
             }
 
-            if (await this.IsGeneratorProjectAsync(projectPath, ct))
+            var hasMarker = await this.IsGeneratorProjectAsync(projectPath, ct);
+            if (hasMarker)
             {
                 this._GeneratorProjectPath = projectPath;
                 return true;
             }
+
+            await Console.Error.WriteLineAsync($"[Gengora] TryOpenProjectAtPathAsync: project did not contain the marker: {projectPath}");
 
             return false;
         }

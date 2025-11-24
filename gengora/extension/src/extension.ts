@@ -469,7 +469,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
         client.onNotification(Constants.Notifications.GENERATOR_ERROR, (params: any) => {
             const msg = params?.message ?? JSON.stringify(params);
+            const stack = params?.stack ?? null;
+
             log(LogLevel.Error, `Gengora error: ${msg}`);
+            // If we have stack details and are in debug mode, write the stack trace to the output channel
+            if (stack && currentLogLevel >= LogLevel.Debug) {
+                log(LogLevel.Debug, `Stack: ${stack}`);
+            }
+
             vscode.window.showErrorMessage(`Gengora: ${msg}`);
         });
 
