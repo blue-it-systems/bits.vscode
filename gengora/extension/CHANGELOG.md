@@ -4,6 +4,38 @@
 
 All notable changes to the Gengora extension will be documented in this file.
 
+## [0.2.8] - 2025-11-24
+
+### Fixed
+
+- **Hot-reload now works**: Generator now correctly restarts when files are saved in the project. Fixed issue where `RestartGeneratorAsync()` was not triggering actual restart.
+- **Window reload now works**: Generator auto-starts correctly after reloading VS Code. Fixed state management to properly clear `_IsManuallyStopped` flag on initialization.
+- **Stable version**: Simplified lifecycle management - generator runs immediately and restarts on every file change (unless manually stopped by user).
+
+### Changed
+
+- Removed complex lock file system entirely (was causing coordination issues)
+- Simplified state tracking in GeneratorService
+- RestartGeneratorAsync() now unconditionally starts generator (instead of being a no-op)
+
+## [0.2.7] - 2025-11-24
+
+### Changed
+
+- Server: removed file lock implementation. Multiple server instances can now independently manage generators without lock file coordination. Session handshake (GENGORA_SESSION_ID) remains for process validation.
+
+## [0.2.6] - 2025-11-24
+
+### Added
+
+- Server: runtime session handshake and validation for generator messages. The server now generates a per-run session identifier and injects it into generator processes as environment variables (GENGORA_SESSION_ID / GENGORA_SERVER_ID). Incoming generator JSON messages that include a sessionId will be validated and only accepted when they match the owning server's active session. This prevents cross-instance / mirrored generator messages.
+
+- Tests: unit tests added to cover GeneratorService session-handshake behavior (matching session accepted; mismatched session ignored; missing session accepted for backward compatibility).
+
+### Notes
+
+- Sample generator in the repo (test-workspace) has been updated to emit sessionId and serverId in generator/hello and generator/generated messages so the handshake is exercised end-to-end for modern generators.
+
 ## [0.1.8] - 2025-11-24
 
 ### Fixed
@@ -57,6 +89,34 @@ All notable changes to the Gengora extension will be documented in this file.
 
 - This is a small patch release focused on reliability and diagnostics to make multi-root projects and flaky generator start more robust.
 - Improved logging and troubleshooting information for multi-root workspaces.
+
+## [0.2.2] - 2025-11-24
+
+### Fixed
+
+- Avoid noisy ERROR status when the generator is already running under another server instance. The server now treats an already-owned generator as an observational state and will not emit an ERROR status, which prevents confusing error messages when reloading multiple VS Code windows pointing at the same generator project.
+
+## [0.2.3] - 2025-11-24
+
+### Fixed
+
+- Multi-root generator detection: when auto-discovering a generator project in a multi-root workspace, the extension now starts the language server with the top-level workspace folder that contains the discovered .csproj (instead of the csproj parent folder). This allows the server to correctly watch repository-level gengora-output directories and detect generated files in multi-root setups.
+
+## [0.2.4] - 2025-11-24
+
+### Fixed / Improved
+
+- Make server 'skip' reasons visible: when a server refuses to start a generator because the project is outside its workspace root or because another server owns the generator, the extension will now display the server-provided message at Info level so you can see why generation didn't start.
+
+## [0.2.5] - 2025-11-24
+
+### Fixed / Improved
+
+- Client-side output watchers: the extension now creates conservative watchers for candidate output locations (project-level .vscode/.generator/out and repository gengora-output folders) and will surface generated-* files directly in the client. This means you will see generated-file events even if the local server instance did not start the generator (e.g. another VS Code window owns the generator process). Duplicate events are Deduplicated locally for a short period to avoid noisy duplicates.
+
+
+
+
 
 
 ### Added

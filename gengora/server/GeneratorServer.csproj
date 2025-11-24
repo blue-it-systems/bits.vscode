@@ -34,5 +34,14 @@
     <PackageReference Include="Microsoft.Build.Locator" Version="1.7.8" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.11.0" />
   </ItemGroup>
+
+  <!-- Exclude test projects under tests/ from being compiled into the runtime server project
+       Tests live in the server/tests folder in the workspace; ensure the main project does
+       not pick them up via default globbing. -->
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**\*" />
+    <Content Remove="tests\**\*" />
+  </ItemGroup>
   
 </Project>

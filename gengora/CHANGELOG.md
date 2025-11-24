@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Generator execution working directory: the language server sets its working directory to the workspace root provided at startup so generator processes run with the generator project's folder as their working directory.
 
+## [0.2.9] - 2025-11-24
+
+### Fixed
+
+- **Generated file notifications**: Added comprehensive debug logging to diagnose why `GENERATOR_GENERATED` notifications were not reaching the client
+  - Logs watcher initialization with directory paths
+  - Logs file detection attempts and pattern matching
+  - Logs session ID validation for security checks
+  - Logs notification forwarding to client
+  - Logs raw generator stdout for troubleshooting
+
+### Added
+
+- **Diagnostic logging**: Extended server logging to help troubleshoot notification issues
+  - `StartOutputWatchers` initialization logging
+  - Session ID validation logging
+  - Generator stdout capture logging
+  - File watcher event logging
+
 ## [0.1.9] - 2025-11-24
 
 ### Fixed
@@ -91,6 +110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-root discovery: server now prefers pre-loaded .csproj paths forwarded by the client so projects living in additional workspace folders (e.g. bits.tenancy/test-workspace) are recognized correctly instead of being missed by a workspace scan.
 - Resilience: added retry behavior for StartGeneratorAsync (5 attempts, 10s intervals) to handle flaky builds/starts and emit helpful generator/error notifications during failures.
 - Diagnostics: much improved debug logging when scanning .csproj files and attempting to open projects so issues are visible in the Gengora output channel.
+
+## [0.2.2] - 2025-11-24
+
+### Fixed
+
+- Avoid noisy error state when a generator is already owned by another server instance: the server will now treat an already-owned generator as an observational state instead of emitting an ERROR status. This prevents mirrored error messages when reloading multiple VS Code windows that point at the same generator project.
+
 
 
 <!-- NOTE: older 0.1.x release notes consolidated above; continuing from 0.1.9 → 0.2.0 -->

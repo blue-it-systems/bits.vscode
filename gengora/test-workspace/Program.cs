@@ -15,12 +15,18 @@ class Program
             var cwd = Directory.GetCurrentDirectory();
             Console.WriteLine("Sample Generator starting up..."); 
 
+            // Read runtime session/server identifiers injected by the coordinator (if present)
+            var sessionId = Environment.GetEnvironmentVariable("GENGORA_SESSION_ID");
+            var serverId = Environment.GetEnvironmentVariable("GENGORA_SERVER_ID");
+
             // Emit a single-line JSON handshake (generator -> coordinator)
             var hello = new
             {
                 method = "generator/hello",
                 @params = new
                 {
+                    sessionId = sessionId,
+                    serverId = serverId,
                     capabilities = new
                     {
                         publishDiagnostics = false,
@@ -73,6 +79,7 @@ class Program
                 method = "generator/generated",
                 @params = new
                 {
+                    sessionId = sessionId,
                     project = genPath,
                     created = createdFiles
                 }

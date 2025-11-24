@@ -22,15 +22,13 @@ public class GeneratorService : IGeneratorService
     private readonly List<System.IO.FileSystemWatcher> _OutputWatchers = new();
     private readonly Dictionary<string, DateTime> _recentlyReported = new(StringComparer.OrdinalIgnoreCase);
 
-    // Per-server unique instance id so multiple VS Code windows (with their own servers)
-    // can coordinate ownership of a running generator and avoid mirroring generated events.
-    private readonly string _serverInstanceId = Guid.NewGuid().ToString("N");
-    private readonly int _serverProcessId = Process.GetCurrentProcess().Id;
-    private readonly object _lockFileSync = new();
+
     
     // Tracks the folder this server instance currently owns (if any).
     private string? _ownedProjectFolder = null;
     private bool _ownsGenerator = false;
+    // Session identifier for the running generator process (if started by this server)
+    private string? _ownedGeneratorSessionId = null;
 
     // Standard ignore patterns for file watching
     private static readonly string[] DefaultIgnorePatterns = new[]
@@ -81,6 +79,9 @@ public class GeneratorService : IGeneratorService
         if (string.IsNullOrEmpty(projectFolder)) return;
 
         StopOutputWatchers();
+
+        // DEBUG: Log the project folder being used
+        _ = Console.Error.WriteLineAsync($"[Gengora] StartOutputWatchers called with projectFolder: {projectFolder}");
 
         // Candidate directories to watch for generated files
         var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -140,7 +141,13 @@ public class GeneratorService : IGeneratorService
 
             try
             {
-                if (!Directory.Exists(pathToWatch)) continue;
+                if (!Directory.Exists(pathToWatch))
+                {
+                    _ = Console.Error.WriteLineAsync($"[Gengora] Skipping watcher for non-existent path: {pathToWatch}");
+                    continue;
+                }
+
+                _ = Console.Error.WriteLineAsync($"[Gengora] Setting up file watcher for: {pathToWatch}");
 
                 var watcher = new System.IO.FileSystemWatcher(pathToWatch)
                 {
@@ -154,9 +161,10 @@ public class GeneratorService : IGeneratorService
                 watcher.EnableRaisingEvents = true;
                 this._OutputWatchers.Add(watcher);
             }
-            catch
+            catch (Exception ex)
             {
                 // ignore watcher failures
+                _ = Console.Error.WriteLineAsync($"[Gengora] Failed to set up watcher for {pathToWatch}: {ex.Message}");
             }
         }
     }
@@ -183,15 +191,26 @@ public class GeneratorService : IGeneratorService
         {
             if (string.IsNullOrEmpty(fullPath)) return;
 
+            // DEBUG: Log every file detection attempt
+            _ = Console.Error.WriteLineAsync($"[Gengora] File detected by watcher: {fullPath}");
+
             var fileName = Path.GetFileName(fullPath) ?? string.Empty;
-            if (!fileName.StartsWith("generated-", StringComparison.OrdinalIgnoreCase)) return;
+            if (!fileName.StartsWith("generated-", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Console.Error.WriteLineAsync($"[Gengora] File does not match 'generated-' pattern: {fileName}");
+                return;
+            }
 
             // Deduplicate within a short window
             lock (_recentlyReported)
             {
                 if (_recentlyReported.TryGetValue(fullPath, out var ts))
                 {
-                    if ((DateTime.UtcNow - ts).TotalSeconds < 2) return;
+                    if ((DateTime.UtcNow - ts).TotalSeconds < 2)
+                    {
+                        _ = Console.Error.WriteLineAsync($"[Gengora] File already reported recently: {fullPath}");
+                        return;
+                    }
                 }
 
                 _recentlyReported[fullPath] = DateTime.UtcNow;
@@ -205,6 +224,7 @@ public class GeneratorService : IGeneratorService
                 if (!this.CanReportGeneratedFilesForProject(projectPath))
                 {
                     // another server owns this project — ignore this event
+                    _ = Console.Error.WriteLineAsync($"[Gengora] Another server owns project {projectPath}, skipping notification");
                     return;
                 }
             }
@@ -220,12 +240,15 @@ public class GeneratorService : IGeneratorService
                 created = new[] { fullPath }
             });
 
+            _ = Console.Error.WriteLineAsync($"[Gengora] Sent GENERATOR_GENERATED notification for: {fullPath}");
+
             // Log to stderr to help debugging when running without a client
             await Console.Error.WriteLineAsync($"[Gengora] Generated file detected: {fullPath}");
         }
-        catch
+        catch (Exception ex)
         {
             // Swallow any watcher errors
+            _ = Console.Error.WriteLineAsync($"[Gengora] Exception in OnGeneratedFileDetected: {ex}");
         }
     }
 
@@ -321,25 +344,44 @@ public class GeneratorService : IGeneratorService
         // Determine the project folder where the generator lives
         var projDir = Path.GetDirectoryName(projectPath) ?? Directory.GetCurrentDirectory();
 
-        // Check for ownership lock — if another server already owns this generator, refuse to start
+        // Be conservative: if the discovered project folder is not contained within this
+        // server instance's workspace root (the process CWD), do not attempt to manage
+        // it here. This prevents one server instance from attempting to own/manage
+        // generators that are outside its configured workspace.
         try
         {
-            if (IsLockPresentAndOwnedByOther(projDir, out var ownerPid))
+            var serverRoot = Path.GetFullPath(Directory.GetCurrentDirectory()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var fullProjDir = Path.GetFullPath(projDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            // On macOS '/var' is a symlink to '/private/var' — normalize checks to accept
+            // either representation as 'inside' the workspace root.
+            var serverRootCandidates = new List<string> { serverRoot };
+            if (serverRoot.StartsWith("/private/", StringComparison.OrdinalIgnoreCase))
             {
-                await this.SendStatusAsync(Constants.States.ERROR, Constants.ErrorMessages.PROCESS_ALREADY_RUNNING, null, cancellationToken);
-                await Console.Error.WriteLineAsync($"[Gengora] Not starting generator - project '{projDir}' is owned by another server (pid={ownerPid})");
-                return;
+                serverRootCandidates.Add(serverRoot.Substring("/private".Length));
             }
-            // If lock is present but stale, remove it and continue
-            if (IsLockPresentAndStale(projDir))
+            else
             {
-                RemoveLockFileIfOwnedOrStale(projDir);
+                // If not already prefixed, check the variant with /private to be safe
+                serverRootCandidates.Add(Path.Combine("/private", serverRoot.TrimStart(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar));
+            }
+
+            // (path normalization checks done above)
+
+            if (!serverRootCandidates.Any(r => fullProjDir.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+            {
+                var msg = $"Generator project '{projDir}' is outside this server's workspace root '{serverRoot}'; skipping management here.";
+                await this.SendStatusAsync(Constants.States.OBSERVING_FULL, msg, null, cancellationToken);
+                await Console.Error.WriteLineAsync($"[Gengora] Skipping start - project '{projDir}' is outside server workspace root '{serverRoot}'");
+                return;
             }
         }
         catch
         {
-            // Best effort - don't block startup if ownership checks fail
+            // If anything goes wrong, proceed conservatively.
         }
+
+
 
 
         // Attempt to build and start the generator with retries on failures (use conservative retry policy)
@@ -406,18 +448,20 @@ public class GeneratorService : IGeneratorService
                 // Claim ownership before launching the process so other servers won't prematurely forward events
                 this._ownedProjectFolder = projDir;
                 this._ownsGenerator = true;
-                try
-                {
-                    WriteLockFileForProject(projDir);
-                }
-                catch
-                {
-                    // best-effort
-                }
+
+                // Generate a session token for this generator run and record it so the generator
+                // can include it in messages. This provides a runtime handshake so different server
+                // instances can be reliably associated with their generator process.
+                this._ownedGeneratorSessionId = Guid.NewGuid().ToString("N");
 
                 try
                 {
-                    await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken);
+                    var procEnv = new Dictionary<string, string>()
+                    {
+                        ["GENGORA_SESSION_ID"] = this._ownedGeneratorSessionId ?? string.Empty
+                    };
+
+                    await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken, procEnv);
                     await this.SendStatusAsync(Constants.States.RUNNING, null, assemblyPath, cancellationToken);
 
                     // Start file system watchers to detect any 'generated-*' output produced by the generator
@@ -440,9 +484,9 @@ public class GeneratorService : IGeneratorService
                     await Console.Error.WriteLineAsync($"[Gengora] {msg}\n{ex}");
                     this._LanguageServer.SendNotification(Constants.Notifications.GENERATOR_ERROR, new { message = msg, stack = ex.ToString(), attempt });
 
-                    // Clean up lock ownership on failure
+                    // Clean up ownership on failure
                     this._ownsGenerator = false;
-                    try { RemoveLockFileIfOwnedOrStale(projDir); } catch { }
+                    this._ownedGeneratorSessionId = null;
 
                     if (attempt < maxAttempts)
                     {
@@ -492,18 +536,9 @@ public class GeneratorService : IGeneratorService
         // Stop any file watchers attached to the generator output
         try { StopOutputWatchers(); } catch { }
 
-        // Remove ownership lock (if we owned it)
-        try
-        {
-            if (!string.IsNullOrEmpty(this._ownedProjectFolder))
-            {
-                RemoveLockFileIfOwnedOrStale(this._ownedProjectFolder);
-            }
-        }
-        catch { }
-
         this._ownedProjectFolder = null;
         this._ownsGenerator = false;
+        this._ownedGeneratorSessionId = null;
     }
 
     public async Task PauseGeneratorAsync(CancellationToken cancellationToken)
@@ -514,18 +549,9 @@ public class GeneratorService : IGeneratorService
 
         try { StopOutputWatchers(); } catch { }
 
-        // Remove ownership while paused
-        try
-        {
-            if (!string.IsNullOrEmpty(this._ownedProjectFolder))
-            {
-                RemoveLockFileIfOwnedOrStale(this._ownedProjectFolder);
-            }
-        }
-        catch { }
-
         this._ownedProjectFolder = null;
         this._ownsGenerator = false;
+        this._ownedGeneratorSessionId = null;
     }
 
     public async Task RestartGeneratorAsync(CancellationToken cancellationToken)
@@ -536,17 +562,23 @@ public class GeneratorService : IGeneratorService
             return;
         }
 
+        // Don't restart if user manually stopped
+        if (this._IsManuallyStopped)
+        {
+            return;
+        }
+
         // Check if generator manages its own watch mode
         if (this._GeneratorCapabilities.WatchMode)
         {
             await this.SendStatusAsync(Constants.States.WATCH_SKIPPED, Constants.ErrorMessages.WATCH_MODE_SKIPPED, null, cancellationToken);
-
             return;
         }
 
         // Only restart if in full observation mode
         if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation)
         {
+            // Always start fresh (don't check if already running) - this enables hot-reload
             await this.StartGeneratorAsync(cancellationToken);
         }
     }
@@ -627,6 +659,9 @@ public class GeneratorService : IGeneratorService
 
     private void HandleGeneratorStdoutLine(string line)
     {
+        // DEBUG: Log every line from generator
+        _ = Console.Error.WriteLineAsync($"[Gengora] HandleGeneratorStdoutLine received: {line}");
+
         // Try to parse single-line JSON messages emitted by the generator
         try
         {
@@ -636,6 +671,38 @@ public class GeneratorService : IGeneratorService
             if (root.TryGetProperty("method", out var methodElem) && methodElem.ValueKind == JsonValueKind.String)
             {
                 var method = methodElem.GetString() ?? string.Empty;
+                // If the generator provided a sessionId in params, attempt to validate against our
+                // owned generator session. This helps ensure we only honor messages from the
+                // generator instance that was started by this server. Maintain backward
+                // compatibility: if no sessionId is provided, accept the message.
+                string? incomingSessionId = null;
+                if (root.TryGetProperty("params", out var paramsElem) && paramsElem.ValueKind == JsonValueKind.Object)
+                {
+                    if (paramsElem.TryGetProperty("sessionId", out var sessionElem) && sessionElem.ValueKind == JsonValueKind.String)
+                    {
+                        incomingSessionId = sessionElem.GetString();
+                    }
+                }
+
+                if (this._ownsGenerator && !string.IsNullOrEmpty(this._ownedGeneratorSessionId))
+                {
+                    _ = Console.Error.WriteLineAsync($"[Gengora] DEBUG: Checking session ID - owned: {this._ownedGeneratorSessionId}, incoming: {incomingSessionId}");
+                    
+                    if (incomingSessionId != null)
+                    {
+                        if (!string.Equals(incomingSessionId, this._ownedGeneratorSessionId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Mismatched session - ignore to avoid cross-instance noise
+                            Console.Error.WriteLine($"[Gengora] Ignoring generator message due to session mismatch (expected {this._ownedGeneratorSessionId}, got {incomingSessionId})");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // No sessionId present; accept for backward compatibility but log a note
+                        Console.Error.WriteLine("[Gengora] Warning: generator message received without sessionId while server owns generator - accepting for compatibility.");
+                    }
+                }
                 
                 // Handle handshake/capabilities
                 if (method == Constants.Notifications.GENERATOR_HELLO)
@@ -645,6 +712,7 @@ public class GeneratorService : IGeneratorService
 
                 // Forward to client - the language server will handle notification routing
                 // For now, send as custom notification
+                _ = Console.Error.WriteLineAsync($"[Gengora] Forwarding generator notification: {method}");
                 this._LanguageServer.SendNotification(method, root.TryGetProperty("params", out var p) ? p : (object?)null);
 
                 return;
@@ -709,211 +777,12 @@ public class GeneratorService : IGeneratorService
         }
     }
 
-    // ---------------------
-    // Lock file / ownership helpers
-    // ---------------------
-
-    private string GetLockFilePath(string projectFolder)
-    {
-        if (string.IsNullOrEmpty(projectFolder)) return string.Empty;
-        return Path.Combine(projectFolder, Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER, "gengora.lock");
-    }
-
-    private bool TryReadLockFile(string projectFolder, out string? serverId, out int serverPid, out DateTime startedAt)
-    {
-        serverId = null; serverPid = -1; startedAt = DateTime.MinValue;
-
-        try
-        {
-            var path = GetLockFilePath(projectFolder);
-            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
-
-            var json = File.ReadAllText(path);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("serverId", out var sid) && sid.ValueKind == JsonValueKind.String)
-            {
-                serverId = sid.GetString();
-            }
-
-            if (root.TryGetProperty("serverPid", out var pid) && pid.ValueKind == JsonValueKind.Number)
-            {
-                serverPid = pid.GetInt32();
-            }
-
-            if (root.TryGetProperty("startedAt", out var dt) && dt.ValueKind == JsonValueKind.String)
-            {
-                if (DateTime.TryParse(dt.GetString(), out var parsed)) startedAt = parsed;
-            }
-
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private bool IsLockPresentAndOwnedByOther(string projectFolder, out int ownerPid)
-    {
-        ownerPid = -1;
-
-        if (!TryReadLockFile(projectFolder, out var ownerId, out var pid, out _)) return false;
-
-        if (string.IsNullOrEmpty(ownerId)) return false;
-
-        // If the owner id matches this server, it's ours
-        if (ownerId.Equals(this._serverInstanceId, StringComparison.OrdinalIgnoreCase)) return false;
-
-        // If the recorded process id is present and running, treat it as owned by another live instance
-        try
-        {
-            var proc = Process.GetProcessById(pid);
-            if (proc != null && !proc.HasExited)
-            {
-                ownerPid = pid;
-                return true;
-            }
-        }
-        catch
-        {
-            // if process lookup failed assume not running
-        }
-
-        return false;
-    }
-
-    private bool IsLockPresentAndStale(string projectFolder)
-    {
-        if (!TryReadLockFile(projectFolder, out var ownerId, out var pid, out _)) return false;
-
-        // If we find an ownerId but the process cannot be found or has exited, consider stale
-        try
-        {
-            var proc = Process.GetProcessById(pid);
-            if (proc == null || proc.HasExited) return true;
-            return false;
-        }
-        catch
-        {
-            // Process not found => stale
-            return true;
-        }
-    }
-
-    private void WriteLockFileForProject(string projectFolder)
-    {
-        if (string.IsNullOrEmpty(projectFolder)) return;
-
-        try
-        {
-            var dir = Path.Combine(projectFolder, Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER);
-            Directory.CreateDirectory(dir);
-            var lockPath = Path.Combine(dir, "gengora.lock");
-
-            var payload = new
-            {
-                serverId = this._serverInstanceId,
-                serverPid = this._serverProcessId,
-                startedAt = DateTime.UtcNow.ToString("o")
-            };
-
-            File.WriteAllText(lockPath, JsonSerializer.Serialize(payload));
-        }
-        catch
-        {
-            // best-effort - ignore failures
-        }
-    }
-
-    private void RemoveLockFileIfOwnedOrStale(string projectFolder)
-    {
-        if (string.IsNullOrEmpty(projectFolder)) return;
-
-        try
-        {
-            var lockPath = GetLockFilePath(projectFolder);
-            if (!File.Exists(lockPath)) return;
-
-            if (!TryReadLockFile(projectFolder, out var ownerId, out var pid, out _))
-            {
-                // couldn't read - remove since unknown
-                File.Delete(lockPath);
-                return;
-            }
-
-            // If we own it, remove
-            if (!string.IsNullOrEmpty(ownerId) && ownerId.Equals(this._serverInstanceId, StringComparison.OrdinalIgnoreCase))
-            {
-                File.Delete(lockPath);
-                return;
-            }
-
-            // If owner is other but process is gone, remove stale lock
-            try
-            {
-                var proc = Process.GetProcessById(pid);
-                if (proc == null || proc.HasExited)
-                {
-                    File.Delete(lockPath);
-                }
-            }
-            catch
-            {
-                // process not found - remove stale
-                File.Delete(lockPath);
-            }
-        }
-        catch
-        {
-            // ignore cleanup errors
-        }
-    }
-
+    // Check if this server can report generated files for the project
+    // (removed lock-based ownership checks - now always allows reporting)
     public bool CanReportGeneratedFilesForProject(string? projectFolder)
     {
-        // If we don't have a project folder, conservatively allow reporting
-        if (string.IsNullOrEmpty(projectFolder)) return true;
-
-        try
-        {
-            if (!TryReadLockFile(projectFolder, out var ownerId, out var pid, out _))
-            {
-                // No lock file => we can report
-                return true;
-            }
-
-            // If the lock exists and belongs to this server - OK
-            if (!string.IsNullOrEmpty(ownerId) && ownerId.Equals(this._serverInstanceId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            // Otherwise, if owner exists and process is alive - don't report
-            try
-            {
-                var proc = Process.GetProcessById(pid);
-                if (proc != null && !proc.HasExited)
-                {
-                    return false;
-                }
-            }
-            catch
-            {
-                // Owner's process not found - attempt to remove stale lock and allow reporting
-                RemoveLockFileIfOwnedOrStale(projectFolder);
-                return true;
-            }
-
-            // default - allow
-            return true;
-        }
-        catch
-        {
-            // If anything goes wrong, be permissive
-            return true;
-        }
+        // Always allow reporting - no file locks
+        return true;
     }
 
     private async Task SendStatusAsync(string state, string? message, string? path, CancellationToken cancellationToken)

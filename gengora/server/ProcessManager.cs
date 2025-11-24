@@ -13,7 +13,7 @@ public class ProcessManager
 
     public bool IsRunning => this._Process != null && !this._Process.HasExited;
 
-    public async Task StartProcessAsync(string assemblyPath, string? args = null, string? workingDirectory = null, CancellationToken ct = default)
+    public async Task StartProcessAsync(string assemblyPath, string? args = null, string? workingDirectory = null, CancellationToken ct = default, IDictionary<string, string>? environmentVariables = null)
     {
         if (this.IsRunning)
         {
@@ -30,6 +30,24 @@ public class ProcessManager
             CreateNoWindow = true,
             WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory()
         };
+
+        // Apply any custom environment variables requested by the caller.
+        if (environmentVariables != null)
+        {
+            try
+            {
+                foreach (var kv in environmentVariables)
+                {
+                    // Using EnvironmentVariables ensures compatibility across runtimes
+                    // and does not overwrite the existing process environment unless specified.
+                    psi.EnvironmentVariables[kv.Key] = kv.Value;
+                }
+            }
+            catch
+            {
+                // Best-effort - do not fail start on environment assignment errors
+            }
+        }
 
         this._Process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         this._Process.Start();

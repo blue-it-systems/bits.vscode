@@ -70,6 +70,13 @@ class FilteredOutputChannel implements vscode.OutputChannel {
 
 // File watcher management for dynamic registration
 let fileWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
+// Specialized watchers that watch generator-produced output locations (generated-*)
+let outputWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
+
+// Dedup map for generated files detected locally to avoid double-notifying when
+// both the server and the local watcher detect the same generated file.
+const recentlySeenGenerated = new Map<string, number>();
+const GENERATED_TTL_MS = 5_000; // ms to keep a file in the dedupe cache
 
 /**
  * Parses .gitignore patterns and converts them to glob patterns
@@ -141,6 +148,11 @@ function disposeAllWatchers(logger: (msg: string) => void) {
         watcher.dispose();
     }
     fileWatchers.clear();
+    for (const [k, w] of outputWatchers) {
+        logger(`Disposing output watcher: ${k}`);
+        try { w.dispose(); } catch {}
+    }
+    outputWatchers.clear();
 }
 
 /**
@@ -162,6 +174,30 @@ function createWatchers(
         logger(`Created watcher for pattern: ${pattern}`);
     }
     
+    return watchers;
+}
+
+/**
+ * Create watchers for repository-level/generated output candidates.
+ * Returns a map keyed by '<base>@<pattern>' so we can manage them separately.
+ */
+function createOutputWatchers(candidates: Array<{ base: string; pattern: string }>, logger: (msg: string) => void) {
+    const watchers = new Map<string, vscode.FileSystemWatcher>();
+
+    for (const cand of candidates) {
+        try {
+            // Use a RelativePattern so we scope the watcher to the base folder
+            const rp = new vscode.RelativePattern(cand.base, cand.pattern);
+            const key = `${cand.base}@${cand.pattern}`;
+            const watcher = vscode.workspace.createFileSystemWatcher(rp as any);
+            watchers.set(key, watcher);
+            logger(`Created output watcher for base: ${cand.base}, pattern: ${cand.pattern}`);
+        } catch (e) {
+            // Best effort - ignore failures creating watchers for odd paths
+            logger(`Failed creating output watcher for ${cand.base} ${cand.pattern}: ${String(e)}`);
+        }
+    }
+
     return watchers;
 }
 
@@ -217,6 +253,20 @@ export async function activate(context: vscode.ExtensionContext) {
         
         if (configuredProjectPath) {
             log(LogLevel.Info, `Using configured generator project path: ${configuredProjectPath}`);
+
+            try {
+                const wf = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(configuredProjectPath));
+                if (wf && wf.uri && wf.uri.fsPath) {
+                    workspaceRoot = wf.uri.fsPath;
+                    log(LogLevel.Debug, `Configured path found inside workspace folder: ${workspaceRoot}`);
+                } else {
+                    // If configured path isn't inside a workspace folder, keep the existing workspaceRoot
+                    // (or fallback to parent directory later when creating watchers)
+                    log(LogLevel.Debug, 'Configured project path is not inside an opened workspace folder - retaining default workspace root');
+                }
+            } catch (e) {
+                log(LogLevel.Debug, `Error resolving workspace folder for configured project path: ${String(e)}`);
+            }
         } else {
             log(LogLevel.Info, 'Auto-discovering generator project via marker...');
         }
@@ -248,8 +298,27 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 if (found) {
                     configuredProjectPath = found;
-                    // prefer server workspace root to be the project folder for accurate scanning
-                    workspaceRoot = path.dirname(found);
+
+                    // Prefer to start the language server with the top-level workspace folder
+                    // that contains the discovered project rather than the .csproj's parent
+                    // directory. Using the workspace folder ensures repository-level output
+                    // locations (e.g. gengora-output) are reachable by the server's watchers
+                    // in multi-root setups.
+                    try {
+                        const wf = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(found));
+                        if (wf && wf.uri && wf.uri.fsPath) {
+                            workspaceRoot = wf.uri.fsPath;
+                            log(LogLevel.Debug, `Using workspace folder for server root: ${workspaceRoot}`);
+                        } else {
+                            // Fallback to csproj parent directory if the file isn't inside a workspace folder
+                            workspaceRoot = path.dirname(found);
+                            log(LogLevel.Debug, `Falling back to csproj parent as server root: ${workspaceRoot}`);
+                        }
+                    } catch (e) {
+                        workspaceRoot = path.dirname(found);
+                        log(LogLevel.Debug, `Error resolving workspace folder for discovered project - using parent dir: ${workspaceRoot}`);
+                    }
+
                     log(LogLevel.Info, `Auto-discovered generator project: ${found}`);
                 }
             } catch (err) {
@@ -349,21 +418,33 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         client.onNotification(Constants.Notifications.GENERATOR_GENERATED, (params: any) => {
+            log(LogLevel.Info, `[DEBUG] GENERATOR_GENERATED notification received: ${JSON.stringify(params)}`);
+            
             const project = params?.project ?? params?.projectPath ?? '';
             const createdRaw = params?.created ?? params?.files ?? [];
             const created = Array.isArray(createdRaw) ? createdRaw : [createdRaw].filter(Boolean);
+
+            log(LogLevel.Info, `[DEBUG] Parsed: project=${project}, created.length=${created.length}`);
+            log(LogLevel.Info, `[DEBUG] Is created array? ${Array.isArray(createdRaw)}`);
+            log(LogLevel.Info, `[DEBUG] createdRaw value: ${JSON.stringify(createdRaw)}`);
 
             if (created.length > 0) {
                 log(LogLevel.Info, `[Generator] Created ${created.length} file(s) under ${project}`);
                 for (const f of created) {
                     log(LogLevel.Info, `  • ${f}`);
+                    try {
+                        // Avoid watcher duplication by marking files seen for a short time
+                        recentlySeenGenerated.set(f, Date.now());
+                        setTimeout(() => recentlySeenGenerated.delete(f), GENERATED_TTL_MS);
+                    } catch { }
                 }
 
                 // Give user a gentle hint so they can view results
                 const actionShow = 'Show Output (Gengora)';
                 const actionReveal = 'Reveal First File';
+                log(LogLevel.Info, `[DEBUG] About to show info message for ${created.length} files...`);
                 vscode.window.showInformationMessage(`Gengora: generator produced ${created.length} file(s)`, actionShow, actionReveal)
-                    .then(choice => {
+                    .then((choice: string | undefined) => {
                         if (!choice) return;
                         if (choice === actionShow) {
                             output.show(true);
@@ -412,6 +493,44 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Create new watchers for full observation
                 const patterns = ['**/*.cs', '**/*.csproj', '**/*.json'];
                 fileWatchers = createWatchers(patterns, projectFolder, excludePatterns, (msg) => log(LogLevel.Debug, msg));
+                        // Additionally create output watchers so the extension can surface
+                        // generated-* files even if this server instance didn't start the generator
+                        // (e.g. another window owns the generator process). We look upward up to
+                        // a few parent levels (but confined to the workspace) for gengora-output
+                        // or out directories and watch for generated-* patterns inside them.
+                        try {
+                            const candidates: Array<{ base: string; pattern: string }> = [];
+                            // project-level out
+                            candidates.push({ base: projectFolder, pattern: '**/generated-*' });
+                            candidates.push({ base: path.join(projectFolder, '.vscode', '.generator', 'out'), pattern: '**/generated-*' });
+
+                            // search upward for repo-level gengora-output up to 6 parents but only within workspaceRoot
+                            let parent = path.dirname(projectFolder);
+                            let depth = 0;
+                            while (parent && depth < 6) {
+                                if (workspaceRoot && !parent.startsWith(workspaceRoot)) break;
+
+                                // watch the parent for gengora-output (it may be created later)
+                                candidates.push({ base: parent, pattern: 'gengora-output/**/generated-*' });
+                                // if explicit gengora-output exists, also watch that directly
+                                const gOut = path.join(parent, 'gengora-output');
+                                if (fs.existsSync(gOut)) {
+                                    candidates.push({ base: gOut, pattern: '**/generated-*' });
+                                }
+
+                                parent = path.dirname(parent);
+                                depth++;
+                            }
+
+                            const ow = createOutputWatchers(candidates, (m) => log(LogLevel.Debug, m));
+                            // merge/attach
+                            for (const [k, w] of ow) {
+                                outputWatchers.set(k, w);
+                                context.subscriptions.push(w);
+                            }
+                        } catch (e) {
+                            log(LogLevel.Debug, `Unable to create output watchers: ${String(e)}`);
+                        }
                 // Attach handlers for these new watchers so changes are forwarded
                 attachWatcherHandlers();
                 context.subscriptions.push(...Array.from(fileWatchers.values()));
@@ -453,11 +572,22 @@ export async function activate(context: vscode.ExtensionContext) {
                         statusBar.text = Constants.StatusBar.STOPPED;
                         break;
                     case Constants.States.OBSERVING_MINIMAL:
-                        log(LogLevel.Debug, '[Gengora] Observing (minimal - waiting for marker)');
+                        // Minimal observation - show as info when a message is provided
+                        if (message) {
+                            log(LogLevel.Info, `[Gengora] Observing (minimal): ${message}`);
+                        } else {
+                            log(LogLevel.Debug, '[Gengora] Observing (minimal - waiting for marker)');
+                        }
                         statusBar.text = Constants.StatusBar.READY;
                         break;
                     case Constants.States.OBSERVING_FULL:
-                        log(LogLevel.Debug, '[Gengora] Observing (full - generator project found)');
+                        // Full observation - show a visible message with details (if present)
+                        if (message) {
+                            // Use Info level so users see why the generator might not be started
+                            log(LogLevel.Info, `[Gengora] Observing (full): ${message}`);
+                        } else {
+                            log(LogLevel.Debug, '[Gengora] Observing (full - generator project found)');
+                        }
                         statusBar.text = Constants.StatusBar.READY;
                         break;
                     default:
@@ -511,6 +641,31 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const patterns = ['**/*.cs', '**/*.csproj', '**/*.json'];
             fileWatchers = createWatchers(patterns, projectFolder, excludePatterns, (msg) => log(LogLevel.Debug, msg));
+            // If the project was auto-discovered and we're initializing full watchers upfront
+            // create output watchers similar to the runtime handler above.
+            try {
+                const candidates: Array<{ base: string; pattern: string }> = [];
+                candidates.push({ base: projectFolder, pattern: '**/generated-*' });
+                candidates.push({ base: path.join(projectFolder, '.vscode', '.generator', 'out'), pattern: '**/generated-*' });
+
+                let parent = path.dirname(projectFolder);
+                let depth = 0;
+                while (parent && depth < 6) {
+                    if (workspaceRoot && !parent.startsWith(workspaceRoot)) break;
+
+                    candidates.push({ base: parent, pattern: 'gengora-output/**/generated-*' });
+                    const gOut = path.join(parent, 'gengora-output');
+                    if (fs.existsSync(gOut)) candidates.push({ base: gOut, pattern: '**/generated-*' });
+
+                    parent = path.dirname(parent);
+                    depth++;
+                }
+
+                const ow = createOutputWatchers(candidates, (m) => log(LogLevel.Debug, m));
+                for (const [k, w] of ow) { outputWatchers.set(k, w); context.subscriptions.push(w); }
+            } catch (e) {
+                log(LogLevel.Debug, `Unable to create initial output watchers: ${String(e)}`);
+            }
         } else {
             // Initialize minimal watchers (only .csproj)
             log(LogLevel.Info, 'Initializing minimal file watchers (waiting for generator marker)...');
@@ -523,6 +678,47 @@ export async function activate(context: vscode.ExtensionContext) {
                 watcher.onDidChange((uri) => forwardFileChange(uri, 2)); // Changed
                 watcher.onDidCreate((uri) => forwardFileChange(uri, 1)); // Created
                 watcher.onDidDelete((uri) => forwardFileChange(uri, 3)); // Deleted
+            }
+            // Attach handlers to output watchers to surface generated-* events locally
+            for (const [k, w] of outputWatchers) {
+                w.onDidCreate((uri) => {
+                    try {
+                        const fsPath = uri.fsPath;
+                        const name = path.basename(fsPath);
+                        if (name && name.startsWith('generated-')) {
+                            // Dedupe locally for a short period
+                            if (!recentlySeenGenerated.has(fsPath)) {
+                                recentlySeenGenerated.set(fsPath, Date.now());
+                                setTimeout(() => recentlySeenGenerated.delete(fsPath), GENERATED_TTL_MS);
+
+                                // show output and helpful actions
+                                log(LogLevel.Info, `[Generator watcher] Created: ${fsPath}`);
+                                const actionShow = 'Show Output (Gengora)';
+                                const actionReveal = 'Reveal File';
+                                vscode.window.showInformationMessage(`Gengora: generator produced 1 file`, actionShow, actionReveal)
+                                    .then(choice => {
+                                        if (!choice) return;
+                                        if (choice === actionShow) output.show(true);
+                                        else if (choice === actionReveal) vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(fsPath));
+                                    });
+                            }
+                        }
+                    } catch { }
+                });
+                w.onDidChange((uri) => {
+                    // treat changes like creates for the purpose of surfacing to the user
+                    try {
+                        const fsPath = uri.fsPath;
+                        const name = path.basename(fsPath);
+                        if (name && name.startsWith('generated-')) {
+                            if (!recentlySeenGenerated.has(fsPath)) {
+                                recentlySeenGenerated.set(fsPath, Date.now());
+                                setTimeout(() => recentlySeenGenerated.delete(fsPath), GENERATED_TTL_MS);
+                                log(LogLevel.Info, `[Generator watcher] Changed: ${fsPath}`);
+                            }
+                        }
+                    } catch { }
+                });
             }
         };
         

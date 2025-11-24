@@ -233,6 +233,12 @@ Generators communicate with Gengora via JSON messages on stdout:
 {
   "method": "generator/hello",
   "params": {
+    // Optional runtime handshake fields injected by the coordinator
+    // (server will pass GENGORA_SESSION_ID and GENGORA_SERVER_ID via environment)
+    // If present, include them so the server can validate messages belong to
+    // the currently-owned generator session.
+    "sessionId": "...",
+    "serverId": "...",
     "capabilities": {
       "publishDiagnostics": false,
       "watchMode": false,

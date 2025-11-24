@@ -56,6 +56,31 @@ public class GeneratorManager(string workspaceRoot)
                 ? envProjectPath 
                 : Path.Combine(this._WorkspaceRoot, envProjectPath);
 
+            // If a user supplied an absolute path, be conservative and require the path
+            // to live under the server's workspace root. This prevents servers from
+            // attempting to manage projects that are outside of their workspace
+            // (e.g. in another VS Code window) which can lead to mirrored events.
+            try
+            {
+                if (Path.IsPathRooted(envProjectPath))
+                {
+                    var fullProj = Path.GetFullPath(projectPath);
+                    var fullRoot = Path.GetFullPath(this._WorkspaceRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    if (!fullProj.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await Console.Error.WriteLineAsync($"[Gengora] Ignoring user-specified project path (outside workspace root): {projectPath}");
+                        // If the user supplied an absolute path that is outside this server's
+                        // workspace root, do not accept it. Continue to auto-scan the workspace
+                        // for valid generator projects instead.
+                        return false;
+                    }
+                }
+            }
+            catch
+            {
+                // best-effort: if something goes wrong resolving paths, continue with normal logic
+            }
+
             // Direct .csproj file
             if (File.Exists(projectPath) && projectPath.EndsWith(Constants.Patterns.CSPROJ_EXTENSION, StringComparison.OrdinalIgnoreCase))
             {
