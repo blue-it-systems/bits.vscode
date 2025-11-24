@@ -51,7 +51,8 @@ Gengora is a VS Code extension that enables **live code generation** with hot-re
 - R2.5: Running → Idle: When execution completes and no auto-rerun configured
 - R2.6: Any state → Error: When compilation or execution fails (R2.7)
 - R2.7: Error state MUST include error message and allow retry
-- R2.8: Any state → Stopped: When user invokes stop command
+- R2.8: Error → Compiling: User invokes retry/start command (NOT a terminal state)
+- R2.9: Any state → Stopped: When user invokes stop command
 
 ---
 
@@ -81,10 +82,9 @@ Gengora is a VS Code extension that enables **live code generation** with hot-re
 
 - R4.1: Compiled generator assembly MUST be placed in a hidden build directory separate from the generator project
 - R4.2: Generated output files MUST be placed in a sibling directory outside the generator project
-- R4.3: Each generator execution MUST create a uniquely-named subdirectory with timestamp
-- R4.4: No generated files MUST reside within the generator project directory tree
-- R4.5: This isolation prevents the generator project from being re-triggered by its own generated files
-- R4.6: The output directory path MUST be explicitly configured by the generator (communication via environment variable or convention)
+- R4.3: No generated files MUST reside within the generator project directory tree
+- R4.4: This isolation prevents the generator project from being re-triggered by its own generated files
+- R4.5: Generators MUST be protected from recursively compiling when they emit files into the generator source tree (see R6.* for protection measures)
 
 ---
 
@@ -96,34 +96,56 @@ Gengora is a VS Code extension that enables **live code generation** with hot-re
 
 - R5.1: A default set of ignore patterns MUST be defined to exclude common non-source directories
 - R5.2: Default ignore patterns MUST include: build outputs (/bin/, /obj/), package managers (/node_modules/, /packages/), version control (/.git/), IDE artifacts (/.vs/, /.vscode/.generator/), dependency caches, generated outputs (/gengora-output/), and IDE-specific directories
-- R5.3: When a file change is detected, path MUST be tested against all ignore patterns
-- R5.4: If path matches any pattern, file change event MUST be discarded
-- R5.5: If path does not match any pattern, recompilation workflow MUST be triggered (R3.*)
-- R5.6: Users MUST be able to customize ignore patterns via settings
-- R5.7: Custom patterns MUST be merged with defaults (user patterns extend, not replace)
+- R5.3: System MUST automatically merge patterns from `.gitignore` files in workspace and generator project directories with default patterns
+- R5.4: `.gitignore` patterns MUST take precedence over default patterns
+- R5.5: When a file change is detected, path MUST be tested against all patterns (default + .gitignore)
+- R5.6: If path matches any pattern, file change event MUST be discarded
+- R5.7: If path does not match any pattern, recompilation workflow MUST be triggered (R3.*)
+- R5.8: Users MUST be able to customize ignore patterns via settings
+- R5.9: Custom patterns MUST be merged with defaults and .gitignore patterns (user patterns extend, not replace)
 
 ---
 
-### 6. Generated File Detection and Notification
+### 6. Generator Interface Contract
 
-**Specification**: The system MUST reliably notify users when generator produces output files.
+**Specification**: Generators MUST implement a loose contract to enable safe recursive-loop prevention and output tracking.
 
-**Notification Trigger Rules**:
+**Generator Interface Requirements**:
 
-- R6.1: Generated file detection MUST support multiple independent detection paths for reliability
-- R6.2: Detection Path A: Generator stdout parsing - Generator MUST emit structured event data (e.g., JSON) indicating files created; server MUST parse and validate this data
-- R6.3: Detection Path B: File system watcher - Server MUST monitor output directory for new files matching convention (e.g., "generated-*" prefix)
-- R6.4: Detection Path C: Extension watcher - Extension MUST create independent file watchers in UI context for redundancy
-- R6.5: Multiple paths MUST use session validation to prevent duplicate notifications (R7.*)
-- R6.6: Notification MUST include generator name, output location, file count, and timestamp
-- R6.7: User MUST be able to view generated files directly from notification UI
+- R6.1: Generators MUST support structured messaging via environment variable configuration
+- R6.2: Generators MUST emit messages to stdout in a standard format (structured JSON)
+- R6.3: Generators MUST emit action status messages to indicate what they are doing (discovery, generation, validation, etc.)
+- R6.4: Generators MUST emit file tracking messages indicating which files they intend to create or have created
+- R6.5: Generators MUST include session ID in all messages (passed via `GENGORA_SESSION_ID` environment variable)
+- R6.6: Message format MUST include: timestamp, action type, message content, session ID, optional file paths
+- R6.7: Server MUST validate session ID in all incoming messages to prevent cross-execution message confusion
 
-**Session Validation for Deduplication (see R7 for details)**:
+**Recursive Loop Prevention**:
 
-- R6.8: Each generator execution MUST have unique session identifier
-- R6.9: Generator MUST include session ID in stdout event messages
-- R6.10: Server MUST validate incoming session ID before forwarding notification
-- R6.11: Mismatched session ID MUST be silently ignored (indicates stale notification)
+- R6.8: Server MUST track which directories generators declare as "output directories"
+- R6.9: Server MUST NOT watch generator source tree for file changes that match declared output patterns
+- R6.10: If generator emits files to a location within generator source tree, server MUST flag as error and prevent recursive recompilation
+- R6.11: Server MUST warn user if generator attempts to write to its own source directory
+- R6.12: Server configuration MUST allow blocking specific output paths as protected (generator source tree always protected)
+
+**Message Contract Example Format** (JSON Lines, one per line):
+
+```
+{"type":"generator/status","action":"start","message":"Starting code generation","session_id":"uuid","timestamp":"ISO8601"}
+{"type":"generator/status","action":"analyzing","message":"Analyzing input files","session_id":"uuid","timestamp":"ISO8601"}
+{"type":"generator/file","action":"emit","path":"/absolute/path/to/generated.cs","session_id":"uuid","timestamp":"ISO8601"}
+{"type":"generator/status","action":"complete","message":"Generation completed","session_id":"uuid","timestamp":"ISO8601"}
+```
+
+**Notification Trigger Rules** (Revised):
+
+- R6.13: Server MUST monitor generator stdout for structured messages
+- R6.14: Server MUST parse and validate each message format
+- R6.15: When message type is "generator/file" with action "emit", server MUST record file path
+- R6.16: Server MUST verify emitted file path is NOT within generator source directory
+- R6.17: If file path is within generator source tree, server MUST emit error notification and NOT recompile
+- R6.18: If file path passes validation, server MUST forward notification to extension
+- R6.19: Multiple notification detection paths are NOT needed (single structured message path is sufficient)
 
 ---
 
@@ -237,23 +259,53 @@ Gengora is a VS Code extension that enables **live code generation** with hot-re
 
 ## Architecture
 
+### Technology Stack Requirements
+
+**Specification**: The system MUST utilize modern, latest-generation technologies.
+
+**Server Technology Requirements**:
+
+- R-ARCH-1: Server MUST be built on .NET 10 (latest LTS release)
+- R-ARCH-2: Server MUST use C# 14 language features
+- R-ARCH-3: Server MUST utilize Roslyn Workspace API for code analysis and project system interaction
+- R-ARCH-4: Server MUST utilize Roslyn API directly for diagnostic extraction and compilation analysis
+- R-ARCH-5: Server SHOULD use OmniSharp if available for LSP protocol implementation, otherwise implement LSP directly
+- R-ARCH-6: All async operations MUST use modern async/await patterns with ValueTask where appropriate
+- R-ARCH-7: Server MUST target net10.0 framework
+
+**Extension Technology Requirements**:
+
+- R-ARCH-8: Extension MUST use latest TypeScript version (5.x+)
+- R-ARCH-9: Extension MUST use VS Code API latest version
+
+**Testing Framework Requirements**:
+
+- R-ARCH-10: Unit tests MUST use TUnit framework (latest version)
+- R-ARCH-11: All server logic MUST have unit test coverage independent of VS Code extension
+- R-ARCH-12: Unit tests MUST NOT require VS Code runtime to execute
+- R-ARCH-13: Unit tests MUST run in standard test runners (dotnet test)
+
 ### High-Level Architecture
 
 The system MUST follow a client-server architecture:
 
 **Client Layer (VS Code Extension)**:
+
 - Responsible for UI presentation (status bar, notifications, commands)
-- Responsible for local file watching (redundancy/fallback detection)
+- Responsible for local file watching (fallback detection)
 - Communicates with server via standard protocol
 
 **Server Layer (Backend Service)**:
+
 - Responsible for generator discovery
 - Responsible for compilation and execution orchestration
 - Responsible for file change detection and event forwarding
 - Manages generator process lifecycle
 - Generates notifications
+- Uses Roslyn APIs for project and compilation analysis
 
 **Communication Protocol**:
+
 - Server and client MUST communicate via standard Language Server Protocol (LSP)
 - MUST support request-response patterns for commands
 - MUST support notification patterns for status updates
@@ -262,25 +314,148 @@ The system MUST follow a client-server architecture:
 
 ## Test Requirements
 
-**Specification**: The system MUST pass comprehensive testing.
+**Specification**: The system MUST pass comprehensive testing, with test strategy independent of VS Code extension where possible.
 
-**Required Test Coverage**:
+### Server-Side Unit Tests (Independent, No VS Code Required)
 
-- R-TEST-1: Auto-discovery correctly identifies generator projects with marker
-- R-TEST-2: System transitions between states (R2.*) correctly
-- R-TEST-3: File changes within generator project trigger recompilation
-- R-TEST-4: Generated files are created in isolated output directory
-- R-TEST-5: Ignore patterns prevent false triggers on ignored files
-- R-TEST-6: Multiple notification detection paths work independently
-- R-TEST-7: Session ID validation prevents duplicate notifications
-- R-TEST-8: Multi-root workspaces manage independent generators without interference
-- R-TEST-9: Log messages appear at correct levels in output channel
-- R-TEST-10: User commands execute correctly and update state
-- R-TEST-11: Error messages display user-friendly information
-- R-TEST-12: Extension survives generator process crashes
-- R-TEST-13: Status bar updates reflect current state
-- R-TEST-14: Settings changes take effect immediately
-- R-TEST-15: Compilation errors appear in Problems panel
+**Specification**: Core server logic MUST be testable via TUnit without VS Code runtime.
+
+**Unit Test Categories**:
+
+- R-TEST-1: **Generator Discovery** - Test project scanning logic independently
+  - Sub-test: Correctly identifies `<IsGeneratorProject>true</IsGeneratorProject>` marker
+  - Sub-test: Handles missing marker correctly
+  - Sub-test: Handles malformed project files
+  - Sub-test: Recursively searches nested directories
+
+- R-TEST-2: **State Machine** - Test all state transitions (R2.*) in isolation
+  - Sub-test: All valid transitions allowed
+  - Sub-test: Invalid transitions rejected or ignored
+  - Sub-test: Error state can transition to Compiling on retry
+  - Sub-test: State change notifications emitted correctly
+
+- R-TEST-3: **File Change Filtering** - Test ignore pattern logic independently
+  - Sub-test: Default patterns correctly filter build artifacts
+  - Sub-test: User patterns merged with defaults
+  - Sub-test: `.gitignore` patterns loaded and merged correctly
+  - Sub-test: Case sensitivity handled per OS
+  - Sub-test: Absolute and relative path matching works
+
+- R-TEST-4: **Ignore Pattern Loading** - Test .gitignore integration
+  - Sub-test: Workspace .gitignore loaded and parsed
+  - Sub-test: Generator project .gitignore loaded and parsed
+  - Sub-test: Multiple .gitignore files merged correctly
+  - Sub-test: Invalid .gitignore lines handled gracefully
+
+- R-TEST-5: **Output Directory Isolation** - Test artifact segregation logic
+  - Sub-test: Generated output paths not in generator source tree
+  - Sub-test: Paths within generator source tree detected as errors
+  - Sub-test: Protected directories marked correctly
+
+- R-TEST-6: **Generator Message Parsing** - Test message contract (R6.*)
+  - Sub-test: Valid JSON message parsed correctly
+  - Sub-test: Invalid JSON handled gracefully
+  - Sub-test: Session ID extracted and validated
+  - Sub-test: Required fields validated
+  - Sub-test: Unknown message types ignored safely
+
+- R-TEST-7: **Recursive Loop Prevention** - Test protection mechanisms
+  - Sub-test: File emitted to generator source tree triggers error
+  - Sub-test: File emitted to safe output directory passes validation
+  - Sub-test: Recursive compilation prevented
+  - Sub-test: User warned of recursive attempt
+
+- R-TEST-8: **Roslyn Integration** - Test .NET Roslyn API usage
+  - Sub-test: Project loading via Roslyn Workspace API works
+  - Sub-test: Compilation diagnostics extracted correctly
+  - Sub-test: Error/warning messages formatted properly
+  - Sub-test: Multiple target frameworks handled
+
+- R-TEST-9: **Async Operation Sequencing** - Test compilation/execution queuing
+  - Sub-test: Multiple file changes queued correctly
+  - Sub-test: Executions don't overlap
+  - Sub-test: Cancellation tokens work properly
+  - Sub-test: Timeouts enforced
+
+- R-TEST-10: **Logging** - Test log output independently
+  - Sub-test: All log levels work (DEBUG, INFO, WARN, ERROR)
+  - Sub-test: Log format includes required fields
+  - Sub-test: Sensitive data not leaked in logs
+
+- R-TEST-11: **Error Handling** - Test exception scenarios
+  - Sub-test: Compilation errors caught and reported
+  - Sub-test: Process crashes handled gracefully
+  - Sub-test: Disk space errors detected
+  - Sub-test: Permission errors reported user-friendly
+
+### Extension Integration Tests (VS Code Simulation)
+
+**Specification**: Extension behavior MUST be testable with VS Code API mock/simulation.
+
+**Extension Test Strategy**:
+
+- R-TEST-EXT-1: **VS Code Mock Layer** - Create minimal VS Code API mock
+  - Status bar mock with setText/setColor methods
+  - Output channel mock with appendLine method
+  - Command registry mock with registerCommand
+  - Settings mock with configuration provider
+  - File watcher mock with onDidChange event
+
+- R-TEST-EXT-2: **Status Bar Updates** - Test against mock VS Code
+  - Sub-test: Status bar updates on state change
+  - Sub-test: Color coding applied correctly
+  - Sub-test: Text format correct: "Gengora: [state] ([project])"
+
+- R-TEST-EXT-3: **Notification Display** - Test against mock VS Code
+  - Sub-test: Notifications shown on generator output
+  - Sub-test: Deduplication prevents duplicate notifications
+  - Sub-test: Action buttons (Show/Reveal) present
+
+- R-TEST-EXT-4: **Command Execution** - Test against mock VS Code
+  - Sub-test: Start command triggers state change
+  - Sub-test: Stop command terminates process
+  - Sub-test: Reset command clears state
+
+- R-TEST-EXT-5: **Settings Integration** - Test against mock VS Code
+  - Sub-test: Settings read from mock configuration
+  - Sub-test: Changes take effect immediately
+  - Sub-test: Defaults applied when unset
+
+- R-TEST-EXT-6: **Local File Watcher** - Test against mock file watcher
+  - Sub-test: File watcher created on startup
+  - Sub-test: Change events processed
+  - Sub-test: Ignore patterns applied
+
+### End-to-End Test Scenarios
+
+**Specification**: Complete workflows MUST be tested end-to-end.
+
+**E2E Test Scenarios**:
+
+- R-TEST-E2E-1: **Happy Path**
+  - Project with marker discovered → Compiles → Executes → Output files notified
+
+- R-TEST-E2E-2: **Compilation Failure Recovery**
+  - File change → Compilation fails → Error state → User retries → Success
+
+- R-TEST-E2E-3: **Recursive Loop Prevention**
+  - Generator emits file to source tree → Error detected → Recompile prevented
+
+- R-TEST-E2E-4: **Multi-Root Workspace**
+  - Two workspace roots with generators → Independent discovery and execution
+
+- R-TEST-E2E-5: **Ignore Pattern Effectiveness**
+  - Change in /bin/ directory → Ignored, no recompile
+  - Change in /src/Program.cs → Triggers recompile
+
+**Test Execution Requirements**:
+
+- R-TEST-EXEC-1: All unit tests MUST run via `dotnet test`
+- R-TEST-EXEC-2: No external dependencies required (use mocks)
+- R-TEST-EXEC-3: Tests MUST be parallelizable
+- R-TEST-EXEC-4: Test runtime MUST be < 30 seconds for full suite
+- R-TEST-EXEC-5: Code coverage MUST be >= 80% for server logic
+- R-TEST-EXEC-6: CI/CD MUST run tests on every commit
 
 ---
 
@@ -296,6 +471,8 @@ The system MUST follow a client-server architecture:
 - C4: File watchers require local file system access (no remote SSH support)
 - C5: Ignore pattern matching behavior depends on OS file system case sensitivity
 - C6: Generator execution timeout should be configurable but default to reasonable value (e.g., 5 minutes)
+- C7: .gitignore parsing MUST be compatible with standard Git ignore format
+- C8: Recursive loop detection MUST prevent compilation if output written to generator source tree
 
 ---
 
