@@ -307,13 +307,13 @@ export async function activate(context: vscode.ExtensionContext) {
                 command: 'dotnet', 
                 args: [serverPath, Constants.CliArgs.WORKSPACE_ROOT, workspaceRoot], 
                 transport: TransportKind.stdio,
-                options: { env: serverEnv }
+                options: { env: serverEnv, cwd: workspaceRoot }
             }
             : { 
                 command: serverPath, 
                 args: [Constants.CliArgs.WORKSPACE_ROOT, workspaceRoot], 
                 transport: TransportKind.stdio,
-                options: { env: serverEnv }
+                options: { env: serverEnv, cwd: workspaceRoot }
             };
 
         const clientOptions = {

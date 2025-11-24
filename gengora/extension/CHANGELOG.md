@@ -2,7 +2,17 @@
 
 All notable changes to the Gengora extension will be documented in this file.
 
-## [0.1.7] - 2025-11-24
+## [0.1.8] - 2025-11-24
+
+### Fixed
+
+- Generator artifacts emitted next to discovered generator project: The server now emits the generator assembly into the generator project's folder (under `.vscode/.generator/out`) rather than the extension's first workspace `.vscode` directory. This fixes multi-root workspace scenarios where the generator project lives in a different workspace folder.
+
+- Generator execution working directory: The server ensures the generator process is started with the generator project's directory as its working directory so generators reliably generate output in the expected workspace location.
+
+### Notes
+
+- This resolves cases where creating/pasting a generator project with the marker caused the server to report it's running even when no artifacts were generated because the emitted assembly landed in the wrong folder.
 
 ## [0.1.6] - 2025-11-24
 

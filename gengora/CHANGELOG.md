@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.4] - 2025-11-23
 
+## [0.1.8] - 2025-11-24
+
+### Fixed
+
+- Multi-root output placement: generated assemblies and artifacts are now emitted under the generator project's folder (`<generator-project>/.vscode/.generator/out`) instead of depending on the server process CWD. This ensures multi-root workspaces place artifacts next to the discovered generator project.
+
+- Generator execution working directory: the language server sets its working directory to the workspace root provided at startup so generator processes run with the generator project's folder as their working directory.
+
+
 ### Added
 
 - **Generator output directory configuration**: Generated files now created outside generator project in `gengora-output/` folder to avoid compilation conflicts

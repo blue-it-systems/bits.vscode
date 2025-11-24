@@ -153,7 +153,10 @@ public class GeneratorService : IGeneratorService
         // Publish any warnings
         await this.PublishBuildDiagnosticsAsync(build, cancellationToken);
 
-        var outDir = Path.Combine(Directory.GetCurrentDirectory(), Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER, Constants.Directories.OUT_FOLDER);
+        // Place emitted generator assembly under the generator project's folder so multi-root
+        // workspaces place artifacts next to the generator project instead of the server CWD.
+        var projDir = Path.GetDirectoryName(projectPath) ?? Directory.GetCurrentDirectory();
+        var outDir = Path.Combine(projDir, Constants.Directories.VSCODE_FOLDER, Constants.Directories.GENERATOR_FOLDER, Constants.Directories.OUT_FOLDER);
         var assemblyPath = await this._GeneratorManager.EmitGeneratorAssemblyAsync(build.BuiltAssemblyPath!, outDir, cancellationToken);
         
         if (assemblyPath == null)
@@ -165,7 +168,8 @@ public class GeneratorService : IGeneratorService
 
         await this.SendStatusAsync(Constants.States.COMPILED, null, assemblyPath, cancellationToken);
 
-        var workspaceRoot = Path.GetDirectoryName(this._GeneratorManager.GetCurrentProjectPath()) ?? Directory.GetCurrentDirectory();
+        // Ensure we start the generator with the generator project's directory as the working directory
+        var workspaceRoot = Path.GetDirectoryName(this._GeneratorManager.GetCurrentProjectPath()) ?? projDir;
         
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
         await this._ProcessManager.StartProcessAsync(assemblyPath, null, workspaceRoot, cancellationToken);

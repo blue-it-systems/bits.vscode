@@ -25,6 +25,20 @@ internal class Program
             }
         }
 
+        // Ensure the process working directory matches the requested workspace root so
+        // artifacts written via Directory.GetCurrentDirectory() end up next to the generator project
+        try
+        {
+            if (!string.IsNullOrEmpty(workspaceRoot) && Directory.Exists(workspaceRoot))
+            {
+                Directory.SetCurrentDirectory(workspaceRoot);
+            }
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"[Gengora] Failed to change working directory to '{workspaceRoot}': {ex.Message}");
+        }
+
         // Set minimum log level to Warning for useful diagnostics
         // Note: OmniSharp's ConfigurationProvider warning cannot be suppressed without setting to Error
         // This warning is harmless - we don't use client-side configuration
