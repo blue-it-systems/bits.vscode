@@ -51,9 +51,8 @@ internal class Program
                 (
                     async (server, request, response, cancellationToken) =>
                     {
-                        // Start generator discovery and observation
-                        var generatorService = server.Services.GetRequiredService<IGeneratorService>();
-                        await generatorService.StartGeneratorAsync(cancellationToken);
+                        // Do NOT auto-start - wait for explicit user command
+                        // This allows users to manually control when the generator starts
                     }
                 )
         );

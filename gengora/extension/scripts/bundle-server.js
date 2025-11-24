@@ -33,11 +33,30 @@ if (!fs.existsSync(extensionBinPath)) {
     console.log(`   Created: ${extensionBinPath}`);
 }
 
+// Exclude localization resources from NuGet dependencies (BuildHost, System.CommandLine, etc.)
+// These can't be controlled via SatelliteResourceLanguages since they're precompiled packages
+const LOCALIZATION_FOLDERS = ['cs', 'de', 'es', 'fr', 'it', 'ja', 'ko', 'pl', 'pt-BR', 'ru', 'tr', 'zh-Hans', 'zh-Hant'];
+
+function shouldExcludeDirectory(dirName) {
+    return LOCALIZATION_FOLDERS.includes(dirName);
+}
+
 // Copy all files from server bin to extension bin
+// Note: Our assembly's localization excluded via SatelliteResourceLanguages=en in .csproj
+// Note: PDB files excluded via DebugType=none in .csproj
+// Note: NuGet package localization folders excluded here (BuildHost-*, System.CommandLine)
 function copyRecursive(src, dest) {
     const stats = fs.statSync(src);
     
     if (stats.isDirectory()) {
+        const dirName = path.basename(src);
+        
+        // Skip localization folders from NuGet packages
+        if (shouldExcludeDirectory(dirName)) {
+            console.log(`   ⊗ Skipping: ${path.relative(extensionRoot, dest)}`);
+            return;
+        }
+        
         if (!fs.existsSync(dest)) {
             fs.mkdirSync(dest, { recursive: true });
         }

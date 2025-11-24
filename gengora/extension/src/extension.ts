@@ -16,12 +16,54 @@ enum LogLevel {
     Debug = 3
 }
 
-let currentLogLevel: LogLevel = LogLevel.Info;
+let currentLogLevel: LogLevel = LogLevel.Warning;
 
 function log(level: LogLevel, message: string) {
     if (level <= currentLogLevel) {
         const prefix = ['[ERROR]', '[WARN]', '[INFO]', '[DEBUG]'][level];
         output.appendLine(`${prefix} ${message}`);
+    }
+}
+
+// Create a custom output channel that respects log levels
+class FilteredOutputChannel implements vscode.OutputChannel {
+    readonly name: string;
+    private channel: vscode.OutputChannel;
+
+    constructor(name: string, channel: vscode.OutputChannel) {
+        this.name = name;
+        this.channel = channel;
+    }
+
+    append(value: string): void {
+        // LSP client messages go through as debug level
+        log(LogLevel.Debug, value.trim());
+    }
+
+    appendLine(value: string): void {
+        log(LogLevel.Debug, value);
+    }
+
+    replace(value: string): void {
+        this.channel.replace(value);
+    }
+
+    clear(): void {
+        this.channel.clear();
+    }
+
+    show(preserveFocus?: boolean): void;
+    show(column?: vscode.ViewColumn, preserveFocus?: boolean): void;
+    show(columnOrPreserveFocus?: vscode.ViewColumn | boolean, preserveFocus?: boolean): void {
+        this.channel.show(columnOrPreserveFocus as any, preserveFocus);
+    }
+
+    hide(): void {
+        this.channel.hide();
+    }
+
+    dispose(): void {
+        this.channel.dispose();
     }
 }
 
@@ -35,12 +77,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Load configuration
         const config = vscode.workspace.getConfiguration('gengora');
-        const logLevelStr = config.get<string>('logLevel') || 'info';
-        currentLogLevel = { error: LogLevel.Error, warning: LogLevel.Warning, info: LogLevel.Info, debug: LogLevel.Debug }[logLevelStr] ?? LogLevel.Info;
+        const logLevelStr = config.get<string>('logLevel') || Constants.Defaults.LOG_LEVEL;
+        currentLogLevel = { error: LogLevel.Error, warning: LogLevel.Warning, info: LogLevel.Info, debug: LogLevel.Debug }[logLevelStr] ?? LogLevel.Warning;
 
         log(LogLevel.Info, '=== Gengora Extension Activating ===');
         log(LogLevel.Debug, `Extension path: ${context.extensionPath}`);
         log(LogLevel.Debug, `Log level: ${logLevelStr}`);
+
+        // Check if user manually stopped the server in a previous session
+        const isManuallyStopped = context.workspaceState.get<boolean>('gengora.manuallyStopped', false);
+        log(LogLevel.Debug, `Manual stop state: ${isManuallyStopped}`);
 
         // Status bar
         statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -131,7 +177,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const clientOptions = {
             documentSelector: [{ scheme: 'file' }],
-            outputChannel: output
+            outputChannel: new FilteredOutputChannel('Gengora LSP', output)
         };
 
         client = new LanguageClient('gengora', 'Gengora LSP', serverOptions, clientOptions);
@@ -139,6 +185,21 @@ export async function activate(context: vscode.ExtensionContext) {
         log(LogLevel.Debug, 'Starting language client...');
         await client.start();
         log(LogLevel.Info, 'Language client started');
+
+        // Auto-start server unless user manually stopped it previously
+        if (!isManuallyStopped) {
+            log(LogLevel.Info, 'Auto-starting generator (not manually stopped)...');
+            try {
+                await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for server initialization
+                if (client && client.isRunning()) {
+                    await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
+                }
+            } catch (error: any) {
+                log(LogLevel.Warning, `Auto-start failed: ${error?.message ?? error}`);
+            }
+        } else {
+            log(LogLevel.Info, 'Skipping auto-start (server was manually stopped in previous session)');
+        }
 
         // Register notification handlers
         client.onNotification(Constants.Notifications.GENERATOR_STDOUT, (params: any) => {
@@ -151,26 +212,32 @@ export async function activate(context: vscode.ExtensionContext) {
 
         client.onNotification(Constants.Notifications.GENERATOR_STATUS, (params: any) => {
             const state = params?.state ?? '';
-            log(LogLevel.Info, `Status: ${state}`);
+            const message = params?.message ?? '';
             
             if (statusBar) {
                 switch (state) {
                     case Constants.States.COMPILING:
+                        log(LogLevel.Debug, '[Gengora] Compiling generator...');
                         statusBar.text = Constants.StatusBar.COMPILING;
                         break;
                     case Constants.States.COMPILED:
+                        log(LogLevel.Debug, '[Gengora] Generator compiled successfully');
                         statusBar.text = Constants.StatusBar.COMPILED;
-                        vscode.window.showInformationMessage('Gengora compiled successfully');
                         break;
                     case Constants.States.RUNNING:
+                        log(LogLevel.Debug, '[Gengora] Generator starting up...');
                         statusBar.text = Constants.StatusBar.RUNNING;
                         break;
                     case Constants.States.ERROR:
+                        log(LogLevel.Error, `[Gengora] Error: ${message}`);
                         statusBar.text = Constants.StatusBar.ERROR;
-                        vscode.window.showErrorMessage('Gengora encountered an error');
                         break;
                     case Constants.States.STOPPED:
+                        log(LogLevel.Debug, '[Gengora] Generator stopped');
                         statusBar.text = Constants.StatusBar.STOPPED;
+                        break;
+                    default:
+                        log(LogLevel.Debug, `Status: ${state}${message ? ' - ' + message : ''}`);
                         break;
                 }
             }
@@ -226,6 +293,7 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_RUN, async () => {
             try {
                 log(LogLevel.Info, 'Starting Gengora...');
+                await context.workspaceState.update('gengora.manuallyStopped', false); // Clear manual stop flag
                 if (client) {
                     await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_START });
                 }
@@ -241,7 +309,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
         context.subscriptions.push(vscode.commands.registerCommand(Constants.Commands.GENGORA_STOP, async () => {
             try {
-                log(LogLevel.Info, 'Stopping Gengora...');
+                log(LogLevel.Info, 'Stopping Gengora (manual stop - will persist across reloads)...');
+                await context.workspaceState.update('gengora.manuallyStopped', true); // Set manual stop flag (persists across reloads)
                 if (client) {
                     await client.sendRequest(Constants.Methods.WORKSPACE_EXECUTE_COMMAND, { command: Constants.Commands.GENGORA_STOP });
                 }

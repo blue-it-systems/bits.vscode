@@ -117,6 +117,43 @@ public class GeneratorManager(string workspaceRoot)
         public string? BuiltAssemblyPath { get; set; }
     }
 
+    /// <summary>
+    /// Cleans the build output for the generator project.
+    /// </summary>
+    public async Task<bool> CleanGeneratorAsync(CancellationToken ct)
+    {
+        if (String.IsNullOrEmpty(this._GeneratorProjectPath))
+        {
+            return false;
+        }
+
+        var projDir = Path.GetDirectoryName(this._GeneratorProjectPath) ?? this._WorkspaceRoot;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = Constants.Build.DOTNET_COMMAND,
+            Arguments = $"clean \"{this._GeneratorProjectPath}\"",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            WorkingDirectory = projDir
+        };
+
+        try
+        {
+            var proc = Process.Start(psi);
+            if (proc == null) return false;
+            
+            await proc.WaitForExitAsync(ct);
+            return proc.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<BuildResult> BuildGeneratorAsync(CancellationToken ct)
     {
         if (String.IsNullOrEmpty(this._GeneratorProjectPath))

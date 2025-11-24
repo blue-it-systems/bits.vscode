@@ -2,7 +2,7 @@
   "name": "gengora",
   "displayName": "Gengora - Live Code Generator",
   "description": "Real-time code generation with hot-reload support. Watch your generator project and see generated code update instantly.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",
@@ -130,8 +130,10 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run build && npm run bundle-server",
-    "build": "tsc -p ./",
+    "vscode:prepublish": "npm run esbuild-base -- --minify && npm run bundle-server",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "build": "npm run esbuild-base -- --sourcemap",
+    "watch": "npm run esbuild-base -- --sourcemap --watch",
     "build-server": "cd ../server && dotnet build -c Release",
     "bundle-server": "npm run build-server && node scripts/bundle-server.js",
     "package": "vsce package"
@@ -139,6 +141,7 @@
   "devDependencies": {
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.80.0",
+    "esbuild": "^0.19.12",
     "typescript": "^5.0.0"
   },
   "dependencies": {

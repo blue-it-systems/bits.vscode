@@ -17,6 +17,7 @@ public class GeneratorService : IGeneratorService
     private readonly ILanguageServerFacade _LanguageServer;
     private readonly GeneratorCapabilities _GeneratorCapabilities;
     private bool _IsPaused;
+    private bool _IsManuallyStopped; // Prevents auto-restart when user manually stops
     
     // Standard ignore patterns for file watching
     private static readonly string[] DefaultIgnorePatterns = new[]
@@ -46,6 +47,7 @@ public class GeneratorService : IGeneratorService
         this._LanguageServer = languageServer;
         this._GeneratorCapabilities = new GeneratorCapabilities();
         this._IsPaused = false;
+        this._IsManuallyStopped = false;
 
         // Wire up process output handlers
         this._ProcessManager.OnStdout += this.HandleGeneratorStdoutLine;
@@ -65,6 +67,9 @@ public class GeneratorService : IGeneratorService
         {
             await this.SendStatusAsync(Constants.States.OBSERVING_FULL, "Generator marker detected, enabling full observation", null, CancellationToken.None);
             
+            // Clean build artifacts before starting to avoid corrupted state
+            await this._GeneratorManager.CleanGeneratorAsync(CancellationToken.None);
+            
             if (!this._IsPaused)
             {
                 await this.StartGeneratorAsync(CancellationToken.None);
@@ -76,6 +81,9 @@ public class GeneratorService : IGeneratorService
         {
             await this.SendStatusAsync(Constants.States.OBSERVING_MINIMAL, "Generator marker removed, switching to minimal observation", null, CancellationToken.None);
             await this.StopGeneratorAsync(CancellationToken.None);
+            
+            // Clean build artifacts after stopping
+            await this._GeneratorManager.CleanGeneratorAsync(CancellationToken.None);
         }
     }
 
@@ -86,6 +94,7 @@ public class GeneratorService : IGeneratorService
 
     public async Task StartGeneratorAsync(CancellationToken cancellationToken)
     {
+        this._IsManuallyStopped = false; // Clear flag - user explicitly started
 
         await this.SendStatusAsync(Constants.States.COMPILING, null, null, cancellationToken);
 
@@ -142,6 +151,7 @@ public class GeneratorService : IGeneratorService
     public async Task StopGeneratorAsync(CancellationToken cancellationToken)
     {
         this._IsPaused = false;
+        this._IsManuallyStopped = true; // Mark as manually stopped - prevents auto-restart
         await this.SendStatusAsync(Constants.States.STOPPING, null, null, cancellationToken);
         await this._ProcessManager.StopProcessAsync(TimeSpan.FromSeconds(Constants.Timeouts.GRACEFUL_SHUTDOWN_SECONDS));
         await this.SendStatusAsync(Constants.States.STOPPED, null, null, cancellationToken);
@@ -187,8 +197,8 @@ public class GeneratorService : IGeneratorService
         // Update observation manager with new project
         await this._ObservationManager.SetGeneratorProjectAsync(projectPath, cancellationToken);
         
-        // Restart if in full observation mode
-        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
+        // Restart if in full observation mode and not paused/manually stopped
+        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused && !this._IsManuallyStopped)
         {
             await this.StartGeneratorAsync(cancellationToken);
         }
@@ -208,8 +218,8 @@ public class GeneratorService : IGeneratorService
             await this._ObservationManager.RecheckMarkerAsync(cancellationToken);
         }
         
-        // If in full observation mode and not paused, trigger restart
-        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused)
+        // If in full observation mode and not paused/manually stopped, trigger restart
+        if (this._ObservationManager.CurrentMode == ObservationMode.FullObservation && !this._IsPaused && !this._IsManuallyStopped)
         {
             await this.RestartGeneratorAsync(cancellationToken);
         }
