@@ -41,6 +41,8 @@ const node_1 = require("vscode-languageclient/node");
 let client;
 let statusBarItem;
 let outputChannel;
+let currentState = 'Idle';
+let extensionContext;
 // State Icons
 const STATE_ICONS = {
     'Idle': '$(circle-slash)',
@@ -61,16 +63,19 @@ const STATE_COLORS = {
     'Error': new vscode.ThemeColor('statusBarItem.errorForeground'),
     'Stopped': undefined
 };
+// Log Levels
+const LOG_LEVELS = ['trace', 'debug', 'info', 'warning', 'error'];
 async function activate(context) {
+    extensionContext = context;
     outputChannel = vscode.window.createOutputChannel('Gengora');
     context.subscriptions.push(outputChannel);
-    // Create Status Bar Item
+    // Create Status Bar Item - Now With Quick Pick Menu
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBarItem.command = 'gengora.showOutput';
+    statusBarItem.command = 'gengora.showQuickPick';
     context.subscriptions.push(statusBarItem);
     updateStatusBar('Idle');
     // Register Commands
-    context.subscriptions.push(vscode.commands.registerCommand('gengora.recompile', recompileCommand), vscode.commands.registerCommand('gengora.stop', stopCommand), vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()));
+    context.subscriptions.push(vscode.commands.registerCommand('gengora.showQuickPick', showQuickPickMenu), vscode.commands.registerCommand('gengora.start', startCommand), vscode.commands.registerCommand('gengora.recompile', recompileCommand), vscode.commands.registerCommand('gengora.stop', stopCommand), vscode.commands.registerCommand('gengora.restart', restartCommand), vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()), vscode.commands.registerCommand('gengora.setLogLevel', setLogLevelCommand));
     // Check If Auto-Start Is Enabled
     const config = vscode.workspace.getConfiguration('gengora');
     const autoStart = config.get('autoStart', true);
@@ -85,13 +90,157 @@ function deactivate() {
     }
     return client.stop();
 }
+/**
+ * Shows the quick pick menu when clicking on the status bar icon.
+ * Provides access to all Gengora commands and settings.
+ */
+async function showQuickPickMenu() {
+    const config = vscode.workspace.getConfiguration('gengora');
+    const currentLogLevel = config.get('logLevel', 'debug');
+    const isServerRunning = client !== undefined;
+    const items = [
+        {
+            label: '$(output) Show Output',
+            description: 'Open the Gengora output channel',
+            action: 'showOutput'
+        },
+        {
+            label: '',
+            kind: vscode.QuickPickItemKind.Separator,
+            action: ''
+        }
+    ];
+    // Add state-dependent commands
+    if (!isServerRunning) {
+        items.push({
+            label: '$(play) Start Server',
+            description: 'Start the Gengora language server',
+            action: 'start'
+        });
+    }
+    else {
+        items.push({
+            label: '$(refresh) Recompile Generator',
+            description: 'Force recompilation of the generator',
+            action: 'recompile'
+        }, {
+            label: '$(debug-stop) Stop Generator',
+            description: 'Stop the current generator',
+            action: 'stop'
+        }, {
+            label: '$(debug-restart) Restart Server',
+            description: 'Restart the language server',
+            action: 'restart'
+        });
+    }
+    items.push({
+        label: '',
+        kind: vscode.QuickPickItemKind.Separator,
+        action: ''
+    }, {
+        label: `$(settings-gear) Log Level: ${currentLogLevel}`,
+        description: 'Change the logging verbosity',
+        action: 'setLogLevel'
+    }, {
+        label: '',
+        kind: vscode.QuickPickItemKind.Separator,
+        action: ''
+    }, {
+        label: `$(info) Status: ${currentState}`,
+        description: 'Current generator state',
+        action: 'info'
+    });
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Gengora Commands',
+        title: 'Gengora - Live Code Generation'
+    });
+    if (!selected) {
+        return;
+    }
+    switch (selected.action) {
+        case 'showOutput':
+            outputChannel.show();
+            break;
+        case 'start':
+            await vscode.commands.executeCommand('gengora.start');
+            break;
+        case 'recompile':
+            await vscode.commands.executeCommand('gengora.recompile');
+            break;
+        case 'stop':
+            await vscode.commands.executeCommand('gengora.stop');
+            break;
+        case 'restart':
+            await vscode.commands.executeCommand('gengora.restart');
+            break;
+        case 'setLogLevel':
+            await vscode.commands.executeCommand('gengora.setLogLevel');
+            break;
+        case 'info':
+            vscode.window.showInformationMessage(`Gengora State: ${currentState}`);
+            break;
+    }
+}
+/**
+ * Command to change the log level.
+ */
+async function setLogLevelCommand() {
+    const config = vscode.workspace.getConfiguration('gengora');
+    const currentLogLevel = config.get('logLevel', 'debug');
+    const items = LOG_LEVELS.map(level => ({
+        label: level.charAt(0).toUpperCase() + level.slice(1),
+        description: level === currentLogLevel ? '(current)' : undefined,
+        picked: level === currentLogLevel,
+        level
+    }));
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select Log Level',
+        title: 'Gengora Log Level'
+    });
+    if (selected) {
+        await config.update('logLevel', selected.level, vscode.ConfigurationTarget.Global);
+        outputChannel.appendLine(`Log level changed to: ${selected.level}`);
+        vscode.window.showInformationMessage(`Gengora: Log level set to ${selected.level}`);
+        // Notify server of log level change if connected
+        if (client) {
+            try {
+                await client.sendNotification('gengora/setLogLevel', { level: selected.level });
+            }
+            catch {
+                // Server might not support this notification yet
+            }
+        }
+    }
+}
+/**
+ * Command to start the language server.
+ */
+async function startCommand() {
+    if (client) {
+        vscode.window.showInformationMessage('Gengora: Server is already running');
+        return;
+    }
+    await startLanguageServer(extensionContext);
+    vscode.window.showInformationMessage('Gengora: Server started');
+}
+/**
+ * Command to restart the language server.
+ */
+async function restartCommand() {
+    if (client) {
+        await client.stop();
+        client = undefined;
+    }
+    await startLanguageServer(extensionContext);
+    vscode.window.showInformationMessage('Gengora: Server restarted');
+}
 async function startLanguageServer(context) {
     const config = vscode.workspace.getConfiguration('gengora');
     // Determine Server Path
     let serverPath = config.get('serverPath', '');
     if (!serverPath) {
         // Use Bundled Server
-        serverPath = context.asAbsolutePath(path.join('..', 'server', 'Gengora.Server', 'bin', 'Debug', 'net10.0', 'Gengora.Server.dll'));
+        serverPath = context.asAbsolutePath(path.join('server', 'Gengora.Server.dll'));
     }
     outputChannel.appendLine(`Server Path: ${serverPath}`);
     // Server Options
@@ -118,7 +267,8 @@ async function startLanguageServer(context) {
             capabilities: {
                 statusBar: true,
                 diagnostics: true
-            }
+            },
+            logLevel: config.get('logLevel', 'debug')
         }
     };
     // Create And Start Client
@@ -132,11 +282,12 @@ async function startLanguageServer(context) {
     outputChannel.appendLine('Language Server Started');
 }
 function updateStatusBar(state, message) {
+    currentState = state;
     const icon = STATE_ICONS[state] ?? '$(question)';
     const displayText = message ?? state;
     statusBarItem.text = `${icon} Gengora: ${displayText}`;
     statusBarItem.color = STATE_COLORS[state];
-    statusBarItem.tooltip = `Gengora Generator State: ${state}${message ? `\n${message}` : ''}`;
+    statusBarItem.tooltip = `Gengora Generator State: ${state}${message ? `\n${message}` : ''}\n\nClick for commands`;
     statusBarItem.show();
 }
 function handleStateChanged(notification) {

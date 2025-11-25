@@ -1,27 +1,48 @@
 {
   "name": "gengora",
   "displayName": "Gengora - Live Code Generation",
-  "description": "Live code generation with hot-reload support for .NET",
-  "version": "0.3.0",
+  "description": "Live code generation with hot-reload support for .NET. Write C# generators that automatically recompile and re-run when source files change.",
+  "version": "0.4.0",
   "publisher": "blue-it-systems",
+  "author": {
+    "name": "Blue IT Systems GmbH",
+    "url": "https://blue-it-systems.de"
+  },
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/blue-it-systems/bits.vscode"
   },
+  "bugs": {
+    "url": "https://github.com/blue-it-systems/bits.vscode/issues"
+  },
+  "homepage": "https://github.com/blue-it-systems/bits.vscode/tree/main/gengora#readme",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Other",
-    "Programming Languages"
+    "Programming Languages",
+    "Snippets"
   ],
   "keywords": [
     "code generation",
     "hot-reload",
     ".NET",
     "C#",
-    "Roslyn"
+    "Roslyn",
+    "generator",
+    "gengora",
+    "bits",
+    "blue-it-systems",
+    "source generator",
+    "syntax tree",
+    "live coding"
   ],
   "activationEvents": [
     "workspaceContains:**/*.csproj"
@@ -29,6 +50,14 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "gengora.showQuickPick",
+        "title": "Gengora: Show Commands"
+      },
+      {
+        "command": "gengora.start",
+        "title": "Gengora: Start Server"
+      },
       {
         "command": "gengora.recompile",
         "title": "Gengora: Recompile Generator"
@@ -38,8 +67,16 @@
         "title": "Gengora: Stop Generator"
       },
       {
+        "command": "gengora.restart",
+        "title": "Gengora: Restart Server"
+      },
+      {
         "command": "gengora.showOutput",
         "title": "Gengora: Show Output"
+      },
+      {
+        "command": "gengora.setLogLevel",
+        "title": "Gengora: Set Log Level"
       }
     ],
     "configuration": {
@@ -59,8 +96,8 @@
             "warning",
             "error"
           ],
-          "default": "debug",
-          "description": "Log level for the Gengora extension."
+          "default": "info",
+          "description": "Log level for the Gengora extension and server."
         },
         "gengora.autoStart": {
           "type": "boolean",
@@ -71,13 +108,15 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run package",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "build": "npm run compile"
+    "build": "npm run compile",
+    "package": "npm run compile && npm prune --production",
+    "vsix": "vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -90,6 +129,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^9.0.0",
     "typescript": "^5.7.0"
   }

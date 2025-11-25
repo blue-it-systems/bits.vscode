@@ -341,3 +341,5 @@ ASALocalRun/
 .mfractor/
 
 !RazorLight.2.0.0-alpha11.nupkg
+
+**/server/*.*

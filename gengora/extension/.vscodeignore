@@ -1,0 +1,45 @@
+# VS Code Extension Ignore File
+# Files and folders listed here will not be included in the packaged extension
+
+# Source files (compiled output in /out is included)
+src/**
+**/*.ts
+!**/*.d.ts
+
+# Test files
+**/*.test.js
+**/test/**
+.vscode-test.mts
+
+# Development configuration
+.vscode/**
+tsconfig.json
+.eslintrc*
+eslint.config.*
+
+# Package management
+node_modules/**
+package-lock.json
+
+# Git
+.git/**
+.gitignore
+.gitattributes
+
+# Build artifacts
+*.vsix
+*.map
+
+# Development files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Samples - exclude build artifacts but keep source
+samples/**/*.obj
+samples/**/bin/**
+samples/**/obj/**
+
+# Server PDB files (debug symbols not needed in production)
+server/*.pdb
