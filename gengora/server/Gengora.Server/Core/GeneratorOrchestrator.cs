@@ -24,6 +24,7 @@ public sealed class GeneratorOrchestrator : IDisposable
 
     private GeneratorProjectInfo? _CurrentProject;
     private string? _CurrentAssemblyPath;
+    private string? _WorkspaceRoot;
     private bool _IsDisposed;
     private CancellationTokenSource? _WorkflowCts;
 
@@ -91,26 +92,80 @@ public sealed class GeneratorOrchestrator : IDisposable
 
         this._Logger.LogInformation("Initializing Orchestrator For Workspace: {WorkspaceRoot}", workspaceRoot);
 
+        // Store Workspace Root For Re-Discovery
+        this._WorkspaceRoot = workspaceRoot;
+
         // Discover Generator Projects
         var project = await this._ProjectScanner.ScanAsync(workspaceRoot, cancellationToken);
 
         if (project == null)
         {
-            this._Logger.LogInformation("No Generator Projects Found In Workspace");
+            this._Logger.LogInformation("No Generator Projects Found In Workspace. Starting Workspace Watcher.");
+
+            // Start A Workspace-Level Watcher To Detect When A Generator Marker Is Added
+            this._FileWatcher.StartWatchingWorkspace(workspaceRoot, this.OnWorkspaceFileChanged);
 
             return;
         }
 
+        await this.ActivateGeneratorAsync(project, cancellationToken);
+    }
+
+    /// <summary>
+    /// Activates A Discovered Generator Project.
+    /// </summary>
+    private async Task ActivateGeneratorAsync(GeneratorProjectInfo project, CancellationToken cancellationToken = default)
+    {
         this._Logger.LogInformation("Found Generator Project: {ProjectName}", project.ProjectName);
 
         this._CurrentProject = project;
         this._StateMachine.TryTransition(GeneratorState.GeneratorFound);
 
-        // Start File Watching
+        // Stop Workspace Watcher If Active, Start Project Watcher
+        this._FileWatcher.StopWatching();
         this._FileWatcher.StartWatching(project);
 
         // Compile And Execute
         await this.CompileAndExecuteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles File Changes At Workspace Level (When No Generator Is Active).
+    /// Used To Detect When A Generator Marker Is Added To A Project.
+    /// </summary>
+    private async void OnWorkspaceFileChanged(object? sender, FileChangedEventArgs e)
+    {
+        // Only Care About .csproj Files
+        if (!e.FilePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        this._Logger.LogDebug("Workspace Project File Changed: {FilePath}", e.FilePath);
+
+        // Check If This Project Now Has The Generator Marker
+        var isGenerator = await this._ProjectScanner.IsStillGeneratorProjectAsync(e.FilePath);
+
+        if (isGenerator)
+        {
+            this._Logger.LogInformation("Generator Marker Added To Project: {FilePath}", e.FilePath);
+
+            var projectInfo = new GeneratorProjectInfo
+            {
+                ProjectPath = e.FilePath,
+                ProjectName = Path.GetFileNameWithoutExtension(e.FilePath),
+                ProjectDirectory = Path.GetDirectoryName(e.FilePath)!
+            };
+
+            try
+            {
+                await this.ActivateGeneratorAsync(projectInfo);
+            }
+            catch (Exception ex)
+            {
+                this._Logger.LogError(ex, "Failed To Activate Generator: {FilePath}", e.FilePath);
+            }
+        }
     }
 
     /// <summary>
@@ -170,6 +225,13 @@ public sealed class GeneratorOrchestrator : IDisposable
         catch (OperationCanceledException)
         {
             this._Logger.LogInformation("Workflow Cancelled");
+
+            // Transition Back To Ready State So New Compilations Can Start
+            // This Handles The Case Where A New File Change Cancelled The Previous Compilation
+            if (this._StateMachine.CurrentState == GeneratorState.Compiling)
+            {
+                this._StateMachine.TryTransition(GeneratorState.Ready);
+            }
         }
         catch (Exception ex)
         {
@@ -264,6 +326,12 @@ public sealed class GeneratorOrchestrator : IDisposable
         this._CurrentAssemblyPath = null;
 
         this._Logger.LogInformation("Orchestrator Reset");
+
+        // Restart Workspace Watcher To Detect When Marker Is Re-Enabled
+        if (!String.IsNullOrEmpty(this._WorkspaceRoot))
+        {
+            this._FileWatcher.StartWatchingWorkspace(this._WorkspaceRoot, this.OnWorkspaceFileChanged);
+        }
     }
 
     private void OnStateMachineStateChanged(object? sender, StateChangedEventArgs e)

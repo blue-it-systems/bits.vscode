@@ -32,7 +32,7 @@ SendMessage(new
 var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "Generated");
 Directory.CreateDirectory(outputDir);
 
-var outputPath = Path.Combine(outputDir, "GeneratedOutput.cs");
+var outputPath = Path.Combine(outputDir, $"GeneratedOutput{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.cs");
 var timestamp = DateTimeOffset.UtcNow.ToString("O");
 
 var content = $$"""

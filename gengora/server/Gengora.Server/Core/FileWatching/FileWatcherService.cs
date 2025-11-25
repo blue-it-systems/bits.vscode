@@ -12,7 +12,9 @@ public sealed class FileWatcherService : IDisposable
     private readonly ILogger<FileWatcherService> _Logger;
     private readonly IgnorePatternMatcher _IgnorePatternMatcher;
     private FileSystemWatcher? _Watcher;
+    private FileSystemWatcher? _WorkspaceWatcher;
     private GeneratorProjectInfo? _CurrentProject;
+    private EventHandler<FileChangedEventArgs>? _WorkspaceFileChangedHandler;
     private bool _IsDisposed;
 
     /// <summary>
@@ -34,6 +36,99 @@ public sealed class FileWatcherService : IDisposable
     /// Gets Whether The File Watcher Is Currently Active.
     /// </summary>
     public bool IsWatching => this._Watcher?.EnableRaisingEvents ?? false;
+
+    /// <summary>
+    /// Gets Whether The Workspace Watcher Is Currently Active.
+    /// </summary>
+    public bool IsWatchingWorkspace => this._WorkspaceWatcher?.EnableRaisingEvents ?? false;
+
+    /// <summary>
+    /// Starts Watching The Workspace Directory For .csproj Files.
+    /// This Is Used When No Generator Project Is Currently Active To Detect When One Becomes Available.
+    /// </summary>
+    public void StartWatchingWorkspace(string workspaceRoot, EventHandler<FileChangedEventArgs> handler)
+    {
+        this.ThrowIfDisposed();
+
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            throw new ArgumentNullException(nameof(workspaceRoot));
+        }
+
+        if (handler == null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        this.StopWatchingWorkspace();
+
+        this._WorkspaceFileChangedHandler = handler;
+
+        try
+        {
+            this._WorkspaceWatcher = new FileSystemWatcher(workspaceRoot)
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
+                Filter = "*.csproj",
+                IncludeSubdirectories = true,
+                EnableRaisingEvents = false
+            };
+
+            this._WorkspaceWatcher.Changed += this.OnWorkspaceFileSystemEvent;
+            this._WorkspaceWatcher.Created += this.OnWorkspaceFileSystemEvent;
+            this._WorkspaceWatcher.Error += this.OnWatcherError;
+
+            this._WorkspaceWatcher.EnableRaisingEvents = true;
+
+            this._Logger.LogInformation
+            (
+                "Started Watching Workspace: {WorkspaceRoot} For .csproj File Changes",
+                workspaceRoot
+            );
+        }
+        catch (Exception ex)
+        {
+            this._Logger.LogError(ex, "Failed To Start Workspace Watcher For: {WorkspaceRoot}", workspaceRoot);
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Stops Watching The Workspace Directory.
+    /// </summary>
+    public void StopWatchingWorkspace()
+    {
+        if (this._WorkspaceWatcher != null)
+        {
+            this._WorkspaceWatcher.EnableRaisingEvents = false;
+            this._WorkspaceWatcher.Changed -= this.OnWorkspaceFileSystemEvent;
+            this._WorkspaceWatcher.Created -= this.OnWorkspaceFileSystemEvent;
+            this._WorkspaceWatcher.Error -= this.OnWatcherError;
+            this._WorkspaceWatcher.Dispose();
+            this._WorkspaceWatcher = null;
+
+            this._Logger.LogInformation("Stopped Workspace Watcher");
+        }
+
+        this._WorkspaceFileChangedHandler = null;
+    }
+
+    private void OnWorkspaceFileSystemEvent(object sender, FileSystemEventArgs e)
+    {
+        // Only Process .csproj Files For Workspace Watching
+        if (e.FullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            this._Logger.LogDebug
+            (
+                "Workspace .csproj File Changed: {FilePath} ({ChangeType})",
+                e.FullPath,
+                e.ChangeType
+            );
+
+            this._WorkspaceFileChangedHandler?.Invoke(this, new FileChangedEventArgs(e.FullPath, e.ChangeType));
+        }
+    }
 
     /// <summary>
     /// Starts Watching The Specified Generator Project Directory.
@@ -175,6 +270,7 @@ public sealed class FileWatcherService : IDisposable
         if (!this._IsDisposed)
         {
             this.StopWatching();
+            this.StopWatchingWorkspace();
             this._IsDisposed = true;
         }
     }
