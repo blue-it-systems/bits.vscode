@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 public sealed class ProjectMarkerScanner
 {
-    private const string GENERATOR_MARKER = "<IsGeneratorProject>true</IsGeneratorProject>";
+    private const string GENERATOR_MARKER_TRUE = "<IsGeneratorProject>true</IsGeneratorProject>";
     private const string PROJECT_FILE_PATTERN = "*.csproj";
 
     private readonly ILogger<ProjectMarkerScanner> _Logger;
@@ -16,6 +16,27 @@ public sealed class ProjectMarkerScanner
     public ProjectMarkerScanner(ILogger<ProjectMarkerScanner> logger)
     {
         this._Logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Checks If A Specific Project File Still Has The Generator Marker Set To True.
+    /// Used To Detect When The Marker Is Removed Or Set To False.
+    /// </summary>
+    /// <param name="projectPath">The Path To The Project File.</param>
+    /// <param name="cancellationToken">Cancellation Token.</param>
+    /// <returns>True If The Project Is Still A Generator Project.</returns>
+    public async Task<bool> IsStillGeneratorProjectAsync
+    (
+        string projectPath,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (String.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+        {
+            return false;
+        }
+
+        return await this.ContainsGeneratorMarkerAsync(projectPath, cancellationToken);
     }
 
     /// <summary>
@@ -122,7 +143,7 @@ public sealed class ProjectMarkerScanner
             var content = await File.ReadAllTextAsync(projectPath, cancellationToken);
 
             // Case-Insensitive Search For Marker
-            var containsMarker = content.Contains(GENERATOR_MARKER, StringComparison.OrdinalIgnoreCase);
+            var containsMarker = content.Contains(GENERATOR_MARKER_TRUE, StringComparison.OrdinalIgnoreCase);
 
             if (containsMarker)
             {

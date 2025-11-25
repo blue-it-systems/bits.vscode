@@ -277,6 +277,31 @@ public sealed class GeneratorOrchestrator : IDisposable
     {
         this._Logger.LogDebug("File Changed: {FilePath}", e.FilePath);
 
+        // Check If The Changed File Is The Project File
+        if (this._CurrentProject != null &&
+            e.FilePath.Equals(this._CurrentProject.ProjectPath, StringComparison.OrdinalIgnoreCase))
+        {
+            // Re-Check If The Project Is Still A Generator Project
+            var isStillGenerator = await this._ProjectScanner.IsStillGeneratorProjectAsync
+            (
+                this._CurrentProject.ProjectPath
+            );
+
+            if (!isStillGenerator)
+            {
+                this._Logger.LogInformation
+                (
+                    "Generator Marker Removed From Project: {ProjectName}. Returning To Idle.",
+                    this._CurrentProject.ProjectName
+                );
+
+                // Reset To Idle State
+                this.Reset();
+
+                return;
+            }
+        }
+
         // R3.3: Recompile On Source File Change
         try
         {

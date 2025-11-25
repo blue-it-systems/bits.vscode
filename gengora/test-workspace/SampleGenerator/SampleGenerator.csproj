@@ -8,7 +8,7 @@
     <LangVersion>preview</LangVersion>
 
     <!-- Gengora Marker: This Property Identifies The Project As A Generator -->
-    <IsGeneratorProject>false</IsGeneratorProject>
+    <IsGeneratorProject>true</IsGeneratorProject>
   </PropertyGroup>
 
 </Project>

@@ -214,4 +214,80 @@ public class ProjectMarkerScannerTests
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.ProjectName).IsEqualTo("Valid");
     }
+
+    [Test]
+    public async Task IsStillGeneratorProjectAsync_WithMarkerTrue_ReturnsTrue()
+    {
+        // Arrange - Create A Project With Generator Marker
+        var projectPath = Path.Combine(this._TestDirectory, "Generator.csproj");
+
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <IsGeneratorProject>true</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act
+        var result = await this._Scanner.IsStillGeneratorProjectAsync(projectPath);
+
+        // Assert
+        await Assert.That(result).IsTrue();
+    }
+
+    [Test]
+    public async Task IsStillGeneratorProjectAsync_WithMarkerFalse_ReturnsFalse()
+    {
+        // Arrange - Create A Project With Generator Marker Set To False
+        var projectPath = Path.Combine(this._TestDirectory, "Generator.csproj");
+
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <IsGeneratorProject>false</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act
+        var result = await this._Scanner.IsStillGeneratorProjectAsync(projectPath);
+
+        // Assert
+        await Assert.That(result).IsFalse();
+    }
+
+    [Test]
+    public async Task IsStillGeneratorProjectAsync_WithMarkerRemoved_ReturnsFalse()
+    {
+        // Arrange - Create A Project Without Generator Marker
+        var projectPath = Path.Combine(this._TestDirectory, "Generator.csproj");
+
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act
+        var result = await this._Scanner.IsStillGeneratorProjectAsync(projectPath);
+
+        // Assert
+        await Assert.That(result).IsFalse();
+    }
+
+    [Test]
+    public async Task IsStillGeneratorProjectAsync_WithNonExistentFile_ReturnsFalse()
+    {
+        // Arrange - Non-Existent File Path
+        var projectPath = Path.Combine(this._TestDirectory, "DoesNotExist.csproj");
+
+        // Act
+        var result = await this._Scanner.IsStillGeneratorProjectAsync(projectPath);
+
+        // Assert
+        await Assert.That(result).IsFalse();
+    }
 }
