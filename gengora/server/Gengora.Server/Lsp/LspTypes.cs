@@ -85,6 +85,46 @@ public sealed record InitializeParams
             return this.RootPath;
         }
     }
+    /// <summary>
+    /// Gets All Effective Workspace Roots From WorkspaceFolders Or Falls Back To EffectiveRootPath.
+    /// This Enables Scanning All Workspace Folders In A Multi-Root Workspace.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> EffectiveWorkspaceRoots
+    {
+        get
+        {
+            // Prefer WorkspaceFolders If Available
+            if (this.WorkspaceFolders is { Count: > 0 })
+            {
+                var roots = new List<string>();
+
+                foreach (var folder in this.WorkspaceFolders)
+                {
+                    if (!String.IsNullOrEmpty(folder.Uri) &&
+                        Uri.TryCreate(folder.Uri, UriKind.Absolute, out var uri))
+                    {
+                        roots.Add(uri.LocalPath);
+                    }
+                }
+
+                if (roots.Count > 0)
+                {
+                    return roots;
+                }
+            }
+
+            // Fall Back To Single Root Path
+            var effectiveRoot = this.EffectiveRootPath;
+
+            if (!String.IsNullOrEmpty(effectiveRoot))
+            {
+                return new[] { effectiveRoot };
+            }
+
+            return Array.Empty<string>();
+        }
+    }
 }
 
 public sealed record ClientInfo

@@ -24,7 +24,7 @@ public sealed class GeneratorOrchestrator : IDisposable
 
     private GeneratorProjectInfo? _CurrentProject;
     private string? _CurrentAssemblyPath;
-    private string? _WorkspaceRoot;
+    private IReadOnlyList<string>? _WorkspaceRoots;
     private bool _IsDisposed;
     private CancellationTokenSource? _WorkflowCts;
 
@@ -83,27 +83,39 @@ public sealed class GeneratorOrchestrator : IDisposable
     public GeneratorProjectInfo? CurrentProject => this._CurrentProject;
 
     /// <summary>
-    /// Initializes The Orchestrator With A Workspace Root.
-    /// Discovers And Loads Generator Projects.
+    /// Initializes The Orchestrator With Multiple Workspace Roots.
+    /// Discovers And Loads Generator Projects From All Workspace Folders.
     /// </summary>
-    public async Task InitializeAsync(string workspaceRoot, CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(IEnumerable<string> workspaceRoots, CancellationToken cancellationToken = default)
     {
         this.ThrowIfDisposed();
 
-        this._Logger.LogInformation("Initializing Orchestrator For Workspace: {WorkspaceRoot}", workspaceRoot);
+        var roots = workspaceRoots?.ToList() ?? new List<string>();
 
-        // Store Workspace Root For Re-Discovery
-        this._WorkspaceRoot = workspaceRoot;
+        if (roots.Count == 0)
+        {
+            this._Logger.LogWarning("No Workspace Roots Provided");
 
-        // Discover Generator Projects
-        var project = await this._ProjectScanner.ScanAsync(workspaceRoot, cancellationToken);
+            return;
+        }
+
+        this._Logger.LogInformation("Initializing Orchestrator For {Count} Workspace Root(s): {WorkspaceRoots}", roots.Count, String.Join(", ", roots));
+
+        // Store Workspace Roots For Re-Discovery
+        this._WorkspaceRoots = roots;
+
+        // Discover Generator Projects In All Workspace Roots
+        var project = await this._ProjectScanner.ScanAsync(roots, cancellationToken);
 
         if (project == null)
         {
-            this._Logger.LogInformation("No Generator Projects Found In Workspace. Starting Workspace Watcher.");
+            this._Logger.LogInformation("No Generator Projects Found In Any Workspace. Starting Workspace Watchers.");
 
-            // Start A Workspace-Level Watcher To Detect When A Generator Marker Is Added
-            this._FileWatcher.StartWatchingWorkspace(workspaceRoot, this.OnWorkspaceFileChanged);
+            // Start A Workspace-Level Watcher For Each Root To Detect When A Generator Marker Is Added
+            foreach (var root in roots)
+            {
+                this._FileWatcher.StartWatchingWorkspace(root, this.OnWorkspaceFileChanged);
+            }
 
             return;
         }
@@ -327,10 +339,13 @@ public sealed class GeneratorOrchestrator : IDisposable
 
         this._Logger.LogInformation("Orchestrator Reset");
 
-        // Restart Workspace Watcher To Detect When Marker Is Re-Enabled
-        if (!String.IsNullOrEmpty(this._WorkspaceRoot))
+        // Restart Workspace Watchers To Detect When Marker Is Re-Enabled
+        if (this._WorkspaceRoots is { Count: > 0 })
         {
-            this._FileWatcher.StartWatchingWorkspace(this._WorkspaceRoot, this.OnWorkspaceFileChanged);
+            foreach (var root in this._WorkspaceRoots)
+            {
+                this._FileWatcher.StartWatchingWorkspace(root, this.OnWorkspaceFileChanged);
+            }
         }
     }
 

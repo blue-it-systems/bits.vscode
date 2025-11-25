@@ -80,7 +80,7 @@ public sealed class GeneratorOrchestratorMarkerTests : IDisposable
         var scanner = new ProjectMarkerScanner(this._LoggerFactory.CreateLogger<ProjectMarkerScanner>());
 
         // Act 1 - Initial Scan Should Find The Generator
-        var initialProject = await scanner.ScanAsync(this._TestDirectory);
+        var initialProject = await scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert 1 - Project Should Be Found
         await Assert.That(initialProject).IsNotNull();
@@ -103,7 +103,7 @@ public sealed class GeneratorOrchestratorMarkerTests : IDisposable
         await Assert.That(isStillGenerator).IsFalse();
 
         // Act 3 - A New Scan Should NOT Find The Generator
-        var rescanProject = await scanner.ScanAsync(this._TestDirectory);
+        var rescanProject = await scanner.ScanAsync(new[] { this._TestDirectory });
         await Assert.That(rescanProject).IsNull();
     }
 

@@ -61,7 +61,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert
         await Assert.That(result).IsNotNull();
@@ -89,7 +89,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert
         await Assert.That(result).IsNull();
@@ -122,7 +122,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert
         await Assert.That(result).IsNotNull();
@@ -148,7 +148,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert
         await Assert.That(result).IsNotNull();
@@ -172,7 +172,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert
         await Assert.That(result).IsNull();
@@ -208,7 +208,7 @@ public class ProjectMarkerScannerTests
             """);
 
         // Act
-        var result = await this._Scanner.ScanAsync(this._TestDirectory);
+        var result = await this._Scanner.ScanAsync(new[] { this._TestDirectory });
 
         // Assert - Only The Valid Project Should Be Found
         await Assert.That(result).IsNotNull();
@@ -289,5 +289,121 @@ public class ProjectMarkerScannerTests
 
         // Assert
         await Assert.That(result).IsFalse();
+    }
+
+    [Test]
+    public async Task ScanAsync_WithMultipleWorkspaceRoots_ShouldFindGeneratorInSecondRoot()
+    {
+        // Arrange - Create Two Workspace Roots, Generator In Second One
+        var workspace1 = Path.Combine(this._TestDirectory, "workspace1");
+        var workspace2 = Path.Combine(this._TestDirectory, "workspace2");
+
+        Directory.CreateDirectory(workspace1);
+        Directory.CreateDirectory(workspace2);
+
+        // First Workspace Has A Regular Project (No Generator)
+        var regularDir = Path.Combine(workspace1, "RegularProject");
+        Directory.CreateDirectory(regularDir);
+
+        await File.WriteAllTextAsync(Path.Combine(regularDir, "RegularProject.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Second Workspace Has The Generator Project
+        var generatorDir = Path.Combine(workspace2, "MyGenerator");
+        Directory.CreateDirectory(generatorDir);
+
+        var generatorFile = Path.Combine(generatorDir, "MyGenerator.csproj");
+        await File.WriteAllTextAsync(generatorFile, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <IsGeneratorProject>true</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act - Scan Both Workspace Roots
+        var result = await this._Scanner.ScanAsync(new[] { workspace1, workspace2 });
+
+        // Assert - Generator Should Be Found In The Second Workspace
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.ProjectName).IsEqualTo("MyGenerator");
+        await Assert.That(result.ProjectPath).IsEqualTo(generatorFile);
+    }
+
+    [Test]
+    public async Task ScanAsync_WithMultipleWorkspaceRoots_ShouldStopAtFirstGenerator()
+    {
+        // Arrange - Create Two Workspace Roots, Both With Generators
+        var workspace1 = Path.Combine(this._TestDirectory, "workspace1");
+        var workspace2 = Path.Combine(this._TestDirectory, "workspace2");
+
+        Directory.CreateDirectory(workspace1);
+        Directory.CreateDirectory(workspace2);
+
+        // First Workspace Has A Generator
+        var generator1Dir = Path.Combine(workspace1, "Generator1");
+        Directory.CreateDirectory(generator1Dir);
+
+        await File.WriteAllTextAsync(Path.Combine(generator1Dir, "Generator1.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <IsGeneratorProject>true</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Second Workspace Also Has A Generator
+        var generator2Dir = Path.Combine(workspace2, "Generator2");
+        Directory.CreateDirectory(generator2Dir);
+
+        await File.WriteAllTextAsync(Path.Combine(generator2Dir, "Generator2.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <IsGeneratorProject>true</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act - Scan Both Workspace Roots
+        var result = await this._Scanner.ScanAsync(new[] { workspace1, workspace2 });
+
+        // Assert - First Generator Should Be Found (From First Workspace)
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.ProjectName).IsEqualTo("Generator1");
+    }
+
+    [Test]
+    public async Task ScanAsync_WithInvalidWorkspaceRoot_ShouldContinueToNextRoot()
+    {
+        // Arrange - Create A Valid Workspace Root With Generator, Plus An Invalid One
+        var nonExistentWorkspace = Path.Combine(this._TestDirectory, "does_not_exist");
+        var validWorkspace = Path.Combine(this._TestDirectory, "valid_workspace");
+
+        Directory.CreateDirectory(validWorkspace);
+
+        var generatorDir = Path.Combine(validWorkspace, "MyGenerator");
+        Directory.CreateDirectory(generatorDir);
+
+        await File.WriteAllTextAsync(Path.Combine(generatorDir, "MyGenerator.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <IsGeneratorProject>true</IsGeneratorProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Act - Scan With Invalid Root First, Then Valid Root
+        var result = await this._Scanner.ScanAsync(new[] { nonExistentWorkspace, validWorkspace });
+
+        // Assert - Generator Should Be Found In The Valid Workspace
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.ProjectName).IsEqualTo("MyGenerator");
     }
 }

@@ -40,32 +40,74 @@ public sealed class ProjectMarkerScanner
     }
 
     /// <summary>
-    /// Scans The Specified Directory Recursively For Generator Projects.
-    /// Per R1.3: Discovery MUST Search Recursively From Workspace Root.
+    /// Scans Multiple Workspace Roots Recursively For Generator Projects.
+    /// Per R1.3: Discovery MUST Search Recursively From All Workspace Roots.
     /// </summary>
-    /// <param name="workspaceRoot">The Root Directory To Scan.</param>
+    /// <param name="workspaceRoots">The Root Directories To Scan.</param>
     /// <param name="cancellationToken">Cancellation Token.</param>
     /// <returns>The First Discovered Generator Project, Or Null If None Found.</returns>
     public async Task<GeneratorProjectInfo?> ScanAsync
     (
-        string workspaceRoot,
+        IEnumerable<string> workspaceRoots,
         CancellationToken cancellationToken = default
     )
     {
-        if (String.IsNullOrWhiteSpace(workspaceRoot))
+        if (workspaceRoots == null)
         {
-            throw new ArgumentException("Workspace Root Cannot Be Null Or Empty.", nameof(workspaceRoot));
+            throw new ArgumentNullException(nameof(workspaceRoots));
         }
 
-        if (!Directory.Exists(workspaceRoot))
-        {
-            this._Logger.LogWarning("Workspace Root Does Not Exist: {WorkspaceRoot}", workspaceRoot);
+        var roots = workspaceRoots.ToList();
 
-            return null;
+        if (roots.Count == 0)
+        {
+            throw new ArgumentException("At Least One Workspace Root Must Be Provided.", nameof(workspaceRoots));
         }
 
-        this._Logger.LogDebug("Starting Generator Discovery In: {WorkspaceRoot}", workspaceRoot);
+        this._Logger.LogDebug("Starting Generator Discovery In {Count} Workspace Root(s)", roots.Count);
 
+        foreach (var workspaceRoot in roots)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (String.IsNullOrWhiteSpace(workspaceRoot))
+            {
+                this._Logger.LogWarning("Skipping Empty Workspace Root");
+
+                continue;
+            }
+
+            if (!Directory.Exists(workspaceRoot))
+            {
+                this._Logger.LogWarning("Workspace Root Does Not Exist: {WorkspaceRoot}", workspaceRoot);
+
+                continue;
+            }
+
+            this._Logger.LogDebug("Scanning Workspace Root: {WorkspaceRoot}", workspaceRoot);
+
+            var project = await this.ScanSingleRootAsync(workspaceRoot, cancellationToken);
+
+            if (project != null)
+            {
+                return project;
+            }
+        }
+
+        this._Logger.LogDebug("No Generator Projects Found In Any Workspace Root");
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scans A Single Workspace Root Recursively For Generator Projects.
+    /// </summary>
+    private async Task<GeneratorProjectInfo?> ScanSingleRootAsync
+    (
+        string workspaceRoot,
+        CancellationToken cancellationToken
+    )
+    {
         try
         {
             var projectFiles = Directory.EnumerateFiles
@@ -109,8 +151,6 @@ public sealed class ProjectMarkerScanner
                     return projectInfo;
                 }
             }
-
-            this._Logger.LogDebug("No Generator Projects Found In: {WorkspaceRoot}", workspaceRoot);
 
             return null;
         }

@@ -37,7 +37,7 @@ function log(message: string): void {
 
 // State Icons
 const STATE_ICONS: Record<string, string> = {
-    'Idle': '$(circle-slash)',
+    'Idle': 'zZ',
     'GeneratorFound': '$(search)',
     'Compiling': '$(sync~spin)',
     'Ready': '$(check)',

@@ -65,7 +65,7 @@ function log(message) {
 }
 // State Icons
 const STATE_ICONS = {
-    'Idle': '$(circle-slash)',
+    'Idle': 'zZ',
     'GeneratorFound': '$(search)',
     'Compiling': '$(sync~spin)',
     'Ready': '$(check)',

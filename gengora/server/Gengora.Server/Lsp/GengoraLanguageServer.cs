@@ -80,25 +80,33 @@ public sealed class GengoraLanguageServer : IDisposable
     [JsonRpcMethod("initialize", UseSingleObjectParameterDeserialization = true)]
     public async Task<InitializeResult> InitializeAsync(InitializeParams @params, CancellationToken cancellationToken)
     {
-        var rootPath = @params.EffectiveRootPath;
+        var workspaceRoots = @params.EffectiveWorkspaceRoots;
 
-        this._Logger.LogInformation("Initialize Request: RootPath={RootPath}, RootUri={RootUri}", @params.RootPath, @params.RootUri);
+        this._Logger.LogInformation
+        (
+            "Initialize Request: WorkspaceFolders={WorkspaceFolderCount}, RootPath={RootPath}, RootUri={RootUri}",
+            @params.WorkspaceFolders?.Count ?? 0,
+            @params.RootPath,
+            @params.RootUri
+        );
 
         if (this._IsInitialized)
         {
             throw new InvalidOperationException("Server Already Initialized");
         }
 
-        if (String.IsNullOrEmpty(rootPath))
+        if (workspaceRoots.Count == 0)
         {
-            throw new ArgumentException("No Root Path Or Root URI Provided");
+            throw new ArgumentException("No Workspace Folders Or Root Path Provided");
         }
+
+        this._Logger.LogInformation("Effective Workspace Roots: {WorkspaceRoots}", String.Join(", ", workspaceRoots));
 
         var version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.3.0";
 
-        // Initialize Orchestrator
-        await this._Orchestrator.InitializeAsync(rootPath, cancellationToken);
+        // Initialize Orchestrator With All Workspace Roots
+        await this._Orchestrator.InitializeAsync(workspaceRoots, cancellationToken);
 
         this._IsInitialized = true;
 

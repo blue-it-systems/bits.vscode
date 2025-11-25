@@ -206,7 +206,7 @@ public sealed class WorkspaceWatcherActivationTests : IDisposable
             ignoreMatcher);
 
         // Verify Initial State - No Generator Found
-        var initialProject = await scanner.ScanAsync(this._TestDirectory);
+        var initialProject = await scanner.ScanAsync(new[] { this._TestDirectory });
         await Assert.That(initialProject).IsNull();
 
         // Set Up Workspace Watcher (This Is What Happens When Server Is Idle)
@@ -216,7 +216,7 @@ public sealed class WorkspaceWatcherActivationTests : IDisposable
             // When A .csproj Changes, Re-Scan To Find Generator
             Task.Run(async () =>
             {
-                var project = await scanner.ScanAsync(this._TestDirectory);
+                var project = await scanner.ScanAsync(new[] { this._TestDirectory });
                 if (project != null)
                 {
                     generatorActivated.TrySetResult(project);
