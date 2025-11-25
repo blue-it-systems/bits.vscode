@@ -41,11 +41,11 @@ public sealed partial class DotnetCompilationService : IDisposable
 
         try
         {
-            // Use dotnet build command
+            // Use dotnet build command (restore first to ensure packages are available)
             var startInfo = new ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"build \"{project.ProjectPath}\" --configuration Debug --no-restore",
+                Arguments = $"build \"{project.ProjectPath}\" --configuration Debug",
                 WorkingDirectory = project.ProjectDirectory,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -117,11 +117,20 @@ public sealed partial class DotnetCompilationService : IDisposable
                     stopwatch.ElapsedMilliseconds
                 );
 
+                // Log detailed error output
+                var errorOutput = String.Join(Environment.NewLine, errorLines.Concat(outputLines.Where(l => l.Contains("error", StringComparison.OrdinalIgnoreCase))));
+                if (!String.IsNullOrWhiteSpace(errorOutput))
+                {
+                    this._Logger.LogError("Build Errors:\n{ErrorOutput}", errorOutput);
+                }
+
                 return new CompilationResult
                 {
                     Success = false,
                     Diagnostics = diagnostics,
-                    ErrorMessage = $"Build Failed With Exit Code {process.ExitCode}",
+                    ErrorMessage = !String.IsNullOrWhiteSpace(errorOutput)
+                        ? $"Build Failed: {errorOutput}"
+                        : $"Build Failed With Exit Code {process.ExitCode}",
                     Duration = stopwatch.Elapsed
                 };
             }

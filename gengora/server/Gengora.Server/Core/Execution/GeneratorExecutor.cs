@@ -154,7 +154,17 @@ public sealed class GeneratorExecutor : IDisposable
                     exitCode,
                     stopwatch.ElapsedMilliseconds
                 );
+
+                // Log stderr for debugging
+                if (stderrLines.Count > 0)
+                {
+                    this._Logger.LogError("Generator Stderr:\n{Stderr}", String.Join(Environment.NewLine, stderrLines));
+                }
             }
+
+            var errorMessage = success ? null : (stderrLines.Count > 0
+                ? $"Generator Failed (Exit Code {exitCode}): {String.Join(Environment.NewLine, stderrLines)}"
+                : $"Generator Failed With Exit Code {exitCode}");
 
             return new ExecutionResult
             {
@@ -164,7 +174,7 @@ public sealed class GeneratorExecutor : IDisposable
                 EmittedFiles = emittedFiles,
                 Duration = stopwatch.Elapsed,
                 SessionId = sessionId,
-                ErrorMessage = success ? null : String.Join(Environment.NewLine, stderrLines)
+                ErrorMessage = errorMessage
             };
         }
         catch (OperationCanceledException)

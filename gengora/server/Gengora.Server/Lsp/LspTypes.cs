@@ -250,3 +250,10 @@ public sealed record RecompileResult
     [JsonPropertyName("message")]
     public string? Message { get; init; }
 }
+
+// Set Log Level Request
+public sealed record SetLogLevelParams
+{
+    [JsonPropertyName("level")]
+    public required string Level { get; init; }
+}

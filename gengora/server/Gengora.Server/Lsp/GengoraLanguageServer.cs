@@ -119,6 +119,18 @@ public sealed class GengoraLanguageServer : IDisposable
     }
 
     /// <summary>
+    /// Handles Set Log Level Notification.
+    /// </summary>
+    [JsonRpcMethod("gengora/setLogLevel", UseSingleObjectParameterDeserialization = true)]
+    public void SetLogLevel(SetLogLevelParams @params)
+    {
+        this._Logger.LogInformation("Set Log Level Request: {Level}", @params.Level);
+
+        // Note: In a full implementation, you would update the logging configuration here
+        // For now, we just log the request
+    }
+
+    /// <summary>
     /// Handles Shutdown Request.
     /// </summary>
     [JsonRpcMethod("shutdown")]
