@@ -46,8 +46,12 @@ public sealed class GengoraLanguageServer : IDisposable
         var inputStream = Console.OpenStandardInput();
         var outputStream = Console.OpenStandardOutput();
 
+        // Configure JSON Formatter With Named Parameters (Required For LSP)
+        var formatter = new SystemTextJsonFormatter();
+        formatter.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+
         // Configure JsonRpc With Header-Delimited Messages (LSP Standard)
-        var handler = new HeaderDelimitedMessageHandler(outputStream, inputStream);
+        var handler = new HeaderDelimitedMessageHandler(outputStream, inputStream, formatter);
 
         this._Rpc = new JsonRpc(handler);
         this._Rpc.AddLocalRpcTarget(this, new JsonRpcTargetOptions
@@ -73,21 +77,28 @@ public sealed class GengoraLanguageServer : IDisposable
     /// <summary>
     /// Handles Initialize Request.
     /// </summary>
-    [JsonRpcMethod("initialize")]
+    [JsonRpcMethod("initialize", UseSingleObjectParameterDeserialization = true)]
     public async Task<InitializeResult> InitializeAsync(InitializeParams @params, CancellationToken cancellationToken)
     {
-        this._Logger.LogInformation("Initialize Request: {RootPath}", @params.RootPath);
+        var rootPath = @params.EffectiveRootPath;
+
+        this._Logger.LogInformation("Initialize Request: RootPath={RootPath}, RootUri={RootUri}", @params.RootPath, @params.RootUri);
 
         if (this._IsInitialized)
         {
             throw new InvalidOperationException("Server Already Initialized");
         }
 
+        if (String.IsNullOrEmpty(rootPath))
+        {
+            throw new ArgumentException("No Root Path Or Root URI Provided");
+        }
+
         var version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.3.0";
 
         // Initialize Orchestrator
-        await this._Orchestrator.InitializeAsync(@params.RootPath, cancellationToken);
+        await this._Orchestrator.InitializeAsync(rootPath, cancellationToken);
 
         this._IsInitialized = true;
 

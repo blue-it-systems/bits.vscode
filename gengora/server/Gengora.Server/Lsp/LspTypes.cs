@@ -1,29 +1,135 @@
 namespace Gengora.Server.Lsp;
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Gengora.Server.Core.StateMachine;
 
 /// <summary>
 /// LSP Request And Response Types For Gengora Protocol.
 /// </summary>
-/// 
-// Initialize Request
+
+// Initialize Request - Full LSP Spec
 public sealed record InitializeParams
 {
-    [JsonPropertyName("rootPath")]
-    public required string RootPath { get; init; }
+    /// <summary>
+    /// The Process Id Of The Parent Process That Started The Server.
+    /// </summary>
+    [JsonPropertyName("processId")]
+    public int? ProcessId { get; init; }
 
+    /// <summary>
+    /// Information About The Client.
+    /// </summary>
+    [JsonPropertyName("clientInfo")]
+    public ClientInfo? ClientInfo { get; init; }
+
+    /// <summary>
+    /// The Locale The Client Is Currently Showing The User Interface In.
+    /// </summary>
+    [JsonPropertyName("locale")]
+    public string? Locale { get; init; }
+
+    /// <summary>
+    /// The RootPath Of The Workspace (Deprecated, Use RootUri).
+    /// </summary>
+    [JsonPropertyName("rootPath")]
+    public string? RootPath { get; init; }
+
+    /// <summary>
+    /// The RootUri Of The Workspace.
+    /// </summary>
+    [JsonPropertyName("rootUri")]
+    public string? RootUri { get; init; }
+
+    /// <summary>
+    /// User Provided Initialization Options.
+    /// </summary>
+    [JsonPropertyName("initializationOptions")]
+    public JsonElement? InitializationOptions { get; init; }
+
+    /// <summary>
+    /// The Capabilities Provided By The Client.
+    /// </summary>
     [JsonPropertyName("capabilities")]
     public ClientCapabilities? Capabilities { get; init; }
+
+    /// <summary>
+    /// The Initial Trace Setting.
+    /// </summary>
+    [JsonPropertyName("trace")]
+    public string? Trace { get; init; }
+
+    /// <summary>
+    /// The Workspace Folders Configured In The Client.
+    /// </summary>
+    [JsonPropertyName("workspaceFolders")]
+    public IReadOnlyList<WorkspaceFolder>? WorkspaceFolders { get; init; }
+
+    /// <summary>
+    /// Gets The Effective Root Path From Either RootUri Or RootPath.
+    /// </summary>
+    [JsonIgnore]
+    public string? EffectiveRootPath
+    {
+        get
+        {
+            if (!String.IsNullOrEmpty(this.RootUri))
+            {
+                // Convert file:// URI To Path
+                if (Uri.TryCreate(this.RootUri, UriKind.Absolute, out var uri))
+                {
+                    return uri.LocalPath;
+                }
+            }
+
+            return this.RootPath;
+        }
+    }
+}
+
+public sealed record ClientInfo
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("version")]
+    public string? Version { get; init; }
+}
+
+public sealed record WorkspaceFolder
+{
+    [JsonPropertyName("uri")]
+    public required string Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
 }
 
 public sealed record ClientCapabilities
 {
-    [JsonPropertyName("statusBar")]
-    public bool StatusBar { get; init; } = true;
+    [JsonPropertyName("workspace")]
+    public WorkspaceCapabilities? Workspace { get; init; }
 
-    [JsonPropertyName("diagnostics")]
-    public bool Diagnostics { get; init; } = true;
+    [JsonPropertyName("textDocument")]
+    public JsonElement? TextDocument { get; init; }
+
+    [JsonPropertyName("window")]
+    public JsonElement? Window { get; init; }
+
+    [JsonPropertyName("general")]
+    public JsonElement? General { get; init; }
+
+    [JsonPropertyName("experimental")]
+    public JsonElement? Experimental { get; init; }
+}
+
+public sealed record WorkspaceCapabilities
+{
+    [JsonPropertyName("workspaceFolders")]
+    public bool? WorkspaceFolders { get; init; }
+
+    [JsonPropertyName("configuration")]
+    public bool? Configuration { get; init; }
 }
 
 public sealed record InitializeResult
