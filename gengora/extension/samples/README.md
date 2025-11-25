@@ -20,6 +20,12 @@ A minimal, well-documented generator project that demonstrates all the core conc
 - Creating configuration files
 - Auto-generating documentation
 
+### AdvancedGenerator
+
+An example demonstrating a generator that reads stdin input and sends back structured
+`generator/status` and `generator/file` messages to stdout. Useful as a reference for more
+complex integrations and for seeing the generator ↔ server contract in action.
+
 ## Quick Start
 
 1. Copy the `BasicGenerator` folder to your workspace
@@ -27,6 +33,20 @@ A minimal, well-documented generator project that demonstrates all the core conc
 3. The generator will automatically be detected and compiled
 4. Modify `Program.cs` to customize generation logic
 5. Watch as changes are hot-reloaded!
+
+### Running samples manually
+
+To try the Basic sample quickly:
+
+```bash
+dotnet run --project BasicGenerator/BasicGenerator.csproj
+```
+
+To try the Advanced sample:
+
+```bash
+echo '{ "command": "add", "message": "hello" }' | dotnet run --project AdvancedGenerator/AdvancedGenerator.csproj
+```
 
 ## Creating Your Own Generator
 

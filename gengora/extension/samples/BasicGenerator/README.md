@@ -4,11 +4,19 @@ A minimal, well-documented code generator that demonstrates all core Gengora con
 
 ## Quick Start
 
-1. Open this folder in VS Code with Gengora installed
-2. The generator will automatically be detected (status bar shows "GeneratorFound")
-3. Wait for compilation (status bar shows "Compiling")
-4. The generator runs automatically (status bar shows "Running" → "Ready")
-5. Check the `Generated/` folder for output files
+This sample generator is designed to work out-of-the-box and also accept standard input from the Gengora server.
+
+1. Open this folder in VS Code with the Gengora extension installed
+2. The generator will be detected and compiled automatically
+3. When it runs it will write a timestamped file into the `Generated/` folder so you can visually verify it executed
+
+Run the generator manually for a quick demo:
+
+```bash
+dotnet run --project BasicGenerator.csproj
+```
+
+It will create a file called `Generated/basic-<timestamp>.txt` and print generator protocol messages to stdout.
 
 ## Project Structure
 
@@ -22,7 +30,7 @@ BasicGenerator/
     └── GeneratedConfig.cs   # Generated configuration
 ```
 
-## How It Works
+## How It Works (Input + Messages)
 
 ### 1. Project Marker
 
@@ -44,6 +52,30 @@ The generator communicates with Gengora using JSON Lines on stdout:
 **File Emission:**
 ```json
 {"type":"generator/file","action":"emit","path":"/full/path/to/file.cs","session_id":"abc123","timestamp":"2024-01-01T00:00:00Z"}
+### 3. Supported Input
+
+The BasicGenerator accepts input from stdin in two forms:
+
+- Command-style input (for ad-hoc actions):
+
+```json
+{ "command": "add", "message": "Hello world", "outputDirectory": "Generated" }
+```
+
+This will create a timestamped file `added-<timestamp>.txt` containing the message.
+
+- File-input (the format the extension passes to generators):
+
+```json
+{
+    "files": [ { "path": "/path/to/source.cs", "content": "class Foo {}" } ],
+    "outputDirectory": "Generated"
+}
+```
+
+This will generate companion files for each input file and emit `generator/file` messages for each generated file.
+
+If no stdin input is provided (for example when you run the sample manually), the generator will still create a timestamped `basic-<timestamp>.txt` file so you can verify it ran successfully.
 ```
 
 ### 3. Session ID

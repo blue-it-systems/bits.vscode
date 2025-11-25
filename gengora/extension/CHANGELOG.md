@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Don't auto-start the language server when no workspace folder or root path is provided. The extension now avoids repeatedly attempting to start the server when no workspace is open, preventing noisy popups and crash loops.
 - Sanitized output formatting: server log artifacts (for example numeric event ids like [0]) are filtered from the extension output channel to keep logs readable.
 
+### Added
+
+- New, working sample generators and tests: BasicGenerator now accepts stdin input (commands and files) and produces timestamped outputs; AdvancedGenerator demonstrates protocol messages (status/file) to the server and produces timestamped companion outputs. Tests added to `out/test/samples.test.js` validate these samples run out-of-the-box.
+
 ### Changed
 
 - Improved activation flows when VS Code opens with no workspace. The Start Server command still allows manual start and will show a helpful message when needed.

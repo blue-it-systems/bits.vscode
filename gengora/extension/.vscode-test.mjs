@@ -22,4 +22,13 @@ export default defineConfig([
 			timeout: 120000
 		}
 	}
+	,
+	{
+		// Samples smoke tests (build/run sample generators)
+		label: 'samples',
+		files: 'out/test/samples.test.js',
+		mocha: {
+			timeout: 120000
+		}
+	}
 ]);
