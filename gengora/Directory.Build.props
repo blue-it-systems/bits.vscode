@@ -1,0 +1,40 @@
+<Project>
+
+	<PropertyGroup>
+		<SolutionDir Condition="'$(SolutionDir)' == ''">./</SolutionDir>
+		<Configurations>Debug;Release</Configurations>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!--<IncludeSymbols>true</IncludeSymbols>
+		<IncludeSource>true</IncludeSource>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>-->
+		<PackageOutputPath>$(SolutionDir)NuGets</PackageOutputPath>
+		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<MinVerSkip Condition="'$(Configuration)' == 'Debug'">true</MinVerSkip>
+		<MinVerTagPrefix>v</MinVerTagPrefix>
+		<RepositoryUrl>https://github.com/blue-it-systems/tenancy.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<!--<PackageVersion>1.0.0</PackageVersion>-->
+		<Authors>Saqib Javed</Authors>
+		<Company>Blue IT Systems GmbH</Company>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MinVer" Version="6.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="**/.DS_Store" />
+	</ItemGroup>
+
+</Project>
