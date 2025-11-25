@@ -1,4 +1,4 @@
-# VS Code Extension Ignore File
+# VS Code Extension Ignore File     
 # Files and folders listed here will not be included in the packaged extension
 
 # Source files (compiled output in /out is included)
@@ -9,7 +9,7 @@ src/**
 # Test files
 **/*.test.js
 **/test/**
-.vscode-test.mts
+.vscode-test.mjs
 
 # Development configuration
 .vscode/**
@@ -17,9 +17,21 @@ tsconfig.json
 .eslintrc*
 eslint.config.*
 
-# Package management
-node_modules/**
+# Package management - KEEP node_modules for runtime dependencies!
+# node_modules/** - DO NOT EXCLUDE, we need vscode-languageclient
 package-lock.json
+
+# Exclude dev dependencies from node_modules
+node_modules/@types/**
+node_modules/@typescript-eslint/**
+node_modules/@vscode/test-cli/**
+node_modules/@vscode/test-electron/**
+node_modules/@vscode/vsce/**
+node_modules/eslint/**
+node_modules/typescript/**
+node_modules/@eslint/**
+node_modules/globals/**
+node_modules/@secretlint/**
 
 # Git
 .git/**

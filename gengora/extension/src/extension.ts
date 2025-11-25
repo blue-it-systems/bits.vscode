@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -12,6 +14,26 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let currentState: string = 'Idle';
 let extensionContext: vscode.ExtensionContext;
+
+// File logger for debugging
+const LOG_FILE_PATH = path.join(os.tmpdir(), 'gengora-extension.log');
+
+function logToFile(message: string): void {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}\n`;
+    try {
+        fs.appendFileSync(LOG_FILE_PATH, logMessage);
+    } catch {
+        // Ignore file write errors
+    }
+}
+
+function log(message: string): void {
+    logToFile(message);
+    if (outputChannel) {
+        outputChannel.appendLine(message);
+    }
+}
 
 // State Icons
 const STATE_ICONS: Record<string, string> = {
@@ -39,41 +61,67 @@ const STATE_COLORS: Record<string, vscode.ThemeColor | undefined> = {
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warning', 'error'] as const;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    extensionContext = context;
-    outputChannel = vscode.window.createOutputChannel('Gengora');
-    context.subscriptions.push(outputChannel);
+    // LOG TO FILE FIRST - before anything else
+    logToFile('========================================');
+    logToFile('ACTIVATE CALLED');
+    logToFile(`Extension Path: ${context.extensionPath}`);
+    logToFile(`Process ID: ${process.pid}`);
+    logToFile(`VS Code Version: ${vscode.version}`);
+    
+    try {
+        extensionContext = context;
+        outputChannel = vscode.window.createOutputChannel('Gengora');
+        context.subscriptions.push(outputChannel);
 
-    // Create Status Bar Item - Now With Quick Pick Menu
-    statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBarItem.command = 'gengora.showQuickPick';
-    context.subscriptions.push(statusBarItem);
+        log('Gengora Extension Activating...');
+        log(`Workspace Folders: ${vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath).join(', ') ?? 'NONE'}`);
+        outputChannel.show(true); // Force show output channel
 
-    updateStatusBar('Idle');
+        // Create Status Bar Item - Now With Quick Pick Menu
+        statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+        statusBarItem.command = 'gengora.showQuickPick';
+        context.subscriptions.push(statusBarItem);
 
-    // Register Commands
-    context.subscriptions.push(
-        vscode.commands.registerCommand('gengora.showQuickPick', showQuickPickMenu),
-        vscode.commands.registerCommand('gengora.start', startCommand),
-        vscode.commands.registerCommand('gengora.recompile', recompileCommand),
-        vscode.commands.registerCommand('gengora.stop', stopCommand),
-        vscode.commands.registerCommand('gengora.restart', restartCommand),
-        vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()),
-        vscode.commands.registerCommand('gengora.setLogLevel', setLogLevelCommand),
-        vscode.commands.registerCommand('gengora.createSampleGenerator', () => createSampleGeneratorCommand(context))
-    );
+        updateStatusBar('Idle');
+        log('Status bar item created and shown');
 
-    // Check If Auto-Start Is Enabled
-    const config = vscode.workspace.getConfiguration('gengora');
-    const autoStart = config.get<boolean>('autoStart', true);
+        // Register Commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('gengora.showQuickPick', showQuickPickMenu),
+            vscode.commands.registerCommand('gengora.start', startCommand),
+            vscode.commands.registerCommand('gengora.recompile', recompileCommand),
+            vscode.commands.registerCommand('gengora.stop', stopCommand),
+            vscode.commands.registerCommand('gengora.restart', restartCommand),
+            vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()),
+            vscode.commands.registerCommand('gengora.setLogLevel', setLogLevelCommand),
+            vscode.commands.registerCommand('gengora.createSampleGenerator', () => createSampleGeneratorCommand(context))
+        );
+        log('Commands registered');
 
-    if (autoStart) {
-        await startLanguageServer(context);
+        // Check If Auto-Start Is Enabled
+        const config = vscode.workspace.getConfiguration('gengora');
+        const autoStart = config.get<boolean>('autoStart', true);
+        log(`AutoStart config: ${autoStart}`);
+
+        if (autoStart) {
+            try {
+                await startLanguageServer(context);
+            } catch (error) {
+                log(`ERROR starting language server: ${error}`);
+                vscode.window.showErrorMessage(`Gengora: Failed to start server - ${error}`);
+            }
+        }
+
+        log('Gengora Extension Activated Successfully');
+        log('========================================');
+    } catch (error) {
+        logToFile(`FATAL ERROR in activate: ${error}`);
+        throw error;
     }
-
-    outputChannel.appendLine('Gengora Extension Activated');
 }
 
 export function deactivate(): Thenable<void> | undefined {
+    logToFile('DEACTIVATE CALLED');
     if (!client) {
         return undefined;
     }
@@ -470,7 +518,7 @@ Print \`EMIT: /path/to/generated/file.cs\` to stdout for each generated file.
             }
         });
 
-        outputChannel.appendLine(`Created sample generator project: ${projectFolder.fsPath}`);
+        log(`Created sample generator project: ${projectFolder.fsPath}`);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Gengora: Failed to create project - ${error}`);
@@ -478,6 +526,8 @@ Print \`EMIT: /path/to/generated/file.cs\` to stdout for each generated file.
 }
 
 async function startLanguageServer(context: vscode.ExtensionContext): Promise<void> {
+    log('Starting Language Server...');
+    
     const config = vscode.workspace.getConfiguration('gengora');
 
     // Determine Server Path
@@ -490,7 +540,18 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
         );
     }
 
-    outputChannel.appendLine(`Server Path: ${serverPath}`);
+    log(`Server Path: ${serverPath}`);
+    
+    // Check if server DLL exists
+    if (!fs.existsSync(serverPath)) {
+        const errorMsg = `Server DLL not found at: ${serverPath}`;
+        log(`ERROR: ${errorMsg}`);
+        throw new Error(errorMsg);
+    }
+    log('Server DLL exists: OK');
+
+    // Check if dotnet is available
+    log('Checking dotnet availability...');
 
     // Server Options
     const serverOptions: ServerOptions = {
@@ -522,6 +583,8 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
         }
     };
 
+    log('Creating Language Client...');
+    
     // Create And Start Client
     client = new LanguageClient(
         'gengora',
@@ -535,10 +598,17 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
     client.onNotification('gengora/diagnostics', handleDiagnostics);
     client.onNotification('gengora/fileEmitted', handleFileEmitted);
 
+    log('Starting Language Client...');
+    
     // Start Client
-    await client.start();
-
-    outputChannel.appendLine('Language Server Started');
+    try {
+        await client.start();
+        log('Language Server Started Successfully');
+    } catch (error) {
+        log(`ERROR starting client: ${error}`);
+        client = undefined!;
+        throw error;
+    }
 }
 
 function updateStatusBar(state: string, message?: string): void {

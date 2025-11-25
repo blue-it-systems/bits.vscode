@@ -46,7 +46,8 @@
   ],
   "activationEvents": [
     "workspaceContains:**/*.csproj",
-    "onLanguage:csharp"
+    "onLanguage:csharp",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
