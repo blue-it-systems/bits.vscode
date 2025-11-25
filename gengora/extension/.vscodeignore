@@ -1,6 +1,9 @@
 # VS Code Extension Ignore File     
 # Files and folders listed here will not be included in the packaged extension
 
+# Test output directories - VS Code test framework downloads (MUST be first!)
+.vscode-test/**
+
 # Source files (compiled output in /out is included)
 src/**
 **/*.ts
@@ -10,6 +13,7 @@ src/**
 **/*.test.js
 **/test/**
 .vscode-test.mjs
+.vscode-test.mts
 
 # Development configuration
 .vscode/**

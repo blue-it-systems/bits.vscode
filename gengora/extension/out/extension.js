@@ -548,8 +548,7 @@ async function startLanguageServer(context) {
 function updateStatusBar(state, message) {
     currentState = state;
     const icon = STATE_ICONS[state] ?? '$(question)';
-    const displayText = message ?? state;
-    statusBarItem.text = `${icon} Gengora: ${displayText}`;
+    statusBarItem.text = `${icon} Gengora: ${state}`;
     statusBarItem.color = STATE_COLORS[state];
     statusBarItem.tooltip = `Gengora Generator State: ${state}${message ? `\n${message}` : ''}\n\nClick for commands`;
     statusBarItem.show();
