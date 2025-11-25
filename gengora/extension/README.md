@@ -6,8 +6,6 @@
 
 **Gengora** enables live code generation with hot-reload support for .NET projects. Write your code generators in C# and see generated code update automatically as you edit.
 
-![Gengora Demo](images/icon.png)
-
 ## Features
 
 - 🔥 **Hot-Reload** - Generators recompile and re-run automatically when source files change

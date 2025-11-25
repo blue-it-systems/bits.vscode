@@ -2,11 +2,11 @@
   "name": "gengora",
   "displayName": "Gengora - Live Code Generation",
   "description": "Live code generation with hot-reload support for .NET. Write C# generators that automatically recompile and re-run when source files change.",
-  "version": "0.4.0",
-  "publisher": "blue-it-systems",
+  "version": "0.5.0",
+  "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",
-    "url": "https://blue-it-systems.de"
+    "url": "https://it-blue.com"
   },
   "icon": "images/icon.png",
   "galleryBanner": {
@@ -45,7 +45,8 @@
     "live coding"
   ],
   "activationEvents": [
-    "workspaceContains:**/*.csproj"
+    "workspaceContains:**/*.csproj",
+    "onLanguage:csharp"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -77,6 +78,10 @@
       {
         "command": "gengora.setLogLevel",
         "title": "Gengora: Set Log Level"
+      },
+      {
+        "command": "gengora.createSampleGenerator",
+        "title": "Gengora: Create Sample Generator Project"
       }
     ],
     "configuration": {
@@ -108,20 +113,21 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
     "build": "npm run compile",
-    "package": "npm run compile && npm prune --production",
+    "package": "npm run compile",
     "vsix": "vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@secretlint/node": "^11.2.5",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.10.10",
     "@types/vscode": "^1.85.0",

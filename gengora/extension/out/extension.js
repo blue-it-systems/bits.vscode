@@ -75,7 +75,7 @@ async function activate(context) {
     context.subscriptions.push(statusBarItem);
     updateStatusBar('Idle');
     // Register Commands
-    context.subscriptions.push(vscode.commands.registerCommand('gengora.showQuickPick', showQuickPickMenu), vscode.commands.registerCommand('gengora.start', startCommand), vscode.commands.registerCommand('gengora.recompile', recompileCommand), vscode.commands.registerCommand('gengora.stop', stopCommand), vscode.commands.registerCommand('gengora.restart', restartCommand), vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()), vscode.commands.registerCommand('gengora.setLogLevel', setLogLevelCommand));
+    context.subscriptions.push(vscode.commands.registerCommand('gengora.showQuickPick', showQuickPickMenu), vscode.commands.registerCommand('gengora.start', startCommand), vscode.commands.registerCommand('gengora.recompile', recompileCommand), vscode.commands.registerCommand('gengora.stop', stopCommand), vscode.commands.registerCommand('gengora.restart', restartCommand), vscode.commands.registerCommand('gengora.showOutput', () => outputChannel.show()), vscode.commands.registerCommand('gengora.setLogLevel', setLogLevelCommand), vscode.commands.registerCommand('gengora.createSampleGenerator', () => createSampleGeneratorCommand(context)));
     // Check If Auto-Start Is Enabled
     const config = vscode.workspace.getConfiguration('gengora');
     const autoStart = config.get('autoStart', true);
@@ -142,6 +142,10 @@ async function showQuickPickMenu() {
         description: 'Change the logging verbosity',
         action: 'setLogLevel'
     }, {
+        label: '$(new-folder) Create Sample Generator',
+        description: 'Scaffold a new generator project in workspace',
+        action: 'createSampleGenerator'
+    }, {
         label: '',
         kind: vscode.QuickPickItemKind.Separator,
         action: ''
@@ -175,6 +179,9 @@ async function showQuickPickMenu() {
             break;
         case 'setLogLevel':
             await vscode.commands.executeCommand('gengora.setLogLevel');
+            break;
+        case 'createSampleGenerator':
+            await vscode.commands.executeCommand('gengora.createSampleGenerator');
             break;
         case 'info':
             vscode.window.showInformationMessage(`Gengora State: ${currentState}`);
@@ -233,6 +240,198 @@ async function restartCommand() {
     }
     await startLanguageServer(extensionContext);
     vscode.window.showInformationMessage('Gengora: Server restarted');
+}
+/**
+ * Command to create a sample generator project in the current workspace.
+ */
+async function createSampleGeneratorCommand(context) {
+    // Check if workspace is open
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage('Gengora: Please open a workspace folder first');
+        return;
+    }
+    // Let user select target folder if multiple workspace folders
+    let targetFolder;
+    if (workspaceFolders.length === 1) {
+        targetFolder = workspaceFolders[0].uri;
+    }
+    else {
+        const selected = await vscode.window.showWorkspaceFolderPick({
+            placeHolder: 'Select workspace folder for the sample generator'
+        });
+        if (!selected) {
+            return;
+        }
+        targetFolder = selected.uri;
+    }
+    // Ask for project name
+    const projectName = await vscode.window.showInputBox({
+        prompt: 'Enter the generator project name',
+        value: 'MyGenerator',
+        validateInput: (value) => {
+            if (!value || value.trim().length === 0) {
+                return 'Project name is required';
+            }
+            if (!/^[a-zA-Z][a-zA-Z0-9_.]*$/.test(value)) {
+                return 'Project name must start with a letter and contain only letters, numbers, dots, and underscores';
+            }
+            return null;
+        }
+    });
+    if (!projectName) {
+        return;
+    }
+    const projectFolder = vscode.Uri.joinPath(targetFolder, projectName);
+    // Check if folder already exists
+    try {
+        await vscode.workspace.fs.stat(projectFolder);
+        vscode.window.showErrorMessage(`Gengora: Folder '${projectName}' already exists`);
+        return;
+    }
+    catch {
+        // Folder doesn't exist - good
+    }
+    try {
+        // Create project folder
+        await vscode.workspace.fs.createDirectory(projectFolder);
+        // Read sample files from extension
+        const samplesPath = context.asAbsolutePath('samples/BasicGenerator');
+        // Create .csproj file
+        const csprojContent = `<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Gengora Marker: This project is a code generator -->
+  <PropertyGroup>
+    <GengoraGeneratorMarker>true</GengoraGeneratorMarker>
+  </PropertyGroup>
+
+</Project>
+`;
+        // Create Program.cs file  
+        const programContent = `using System;
+using System.IO;
+using System.Text.Json;
+using System.Collections.Generic;
+
+namespace ${projectName};
+
+/// <summary>
+/// Gengora code generator.
+/// Reads JSON input from stdin and writes generated C# code to files.
+/// </summary>
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Read input from stdin
+        var inputJson = Console.In.ReadToEnd();
+        
+        // Parse input (Gengora sends context as JSON)
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var input = JsonSerializer.Deserialize<GeneratorInput>(inputJson, options);
+        
+        if (input?.Files == null || input.Files.Count == 0)
+        {
+            Console.Error.WriteLine("No files provided in input");
+            return;
+        }
+
+        // Generate code for each input file
+        foreach (var file in input.Files)
+        {
+            GenerateCode(file, input.OutputDirectory);
+        }
+    }
+
+    private static void GenerateCode(InputFile file, string? outputDir)
+    {
+        // Example: Generate a companion file for each .cs file
+        var outputPath = outputDir ?? Path.GetDirectoryName(file.Path) ?? ".";
+        var fileName = Path.GetFileNameWithoutExtension(file.Path);
+        var outputFile = Path.Combine(outputPath, $"{fileName}.Generated.cs");
+
+        var code = $@"// <auto-generated>
+// Generated by ${projectName}
+// Source: {file.Path}
+// </auto-generated>
+
+namespace Generated;
+
+public static partial class {fileName}Extensions
+{{
+    public static string GetSourcePath() => @""{file.Path}"";
+}}
+";
+
+        File.WriteAllText(outputFile, code);
+        
+        // Output the emitted file path for Gengora to track
+        Console.WriteLine($"EMIT: {outputFile}");
+    }
+}
+
+// Input types that Gengora sends
+public record GeneratorInput(List<InputFile> Files, string? OutputDirectory);
+public record InputFile(string Path, string Content);
+`;
+        // Create marker file
+        const markerContent = `# Gengora Generator Project
+
+This file marks this directory as a Gengora generator project.
+The presence of \`GengoraGeneratorMarker\` in the .csproj is what Gengora looks for.
+
+## How it works
+
+1. Gengora watches for changes in your workspace
+2. When .cs files change, it compiles and runs this generator
+3. The generator reads input from stdin (JSON) and writes files to disk
+4. Generated files are tracked and refreshed automatically
+
+## Input Format
+
+The generator receives JSON input on stdin:
+\`\`\`json
+{
+  "files": [
+    { "path": "/path/to/file.cs", "content": "..." }
+  ],
+  "outputDirectory": "/path/to/output"
+}
+\`\`\`
+
+## Output Convention
+
+Print \`EMIT: /path/to/generated/file.cs\` to stdout for each generated file.
+`;
+        // Helper function to convert string to Uint8Array
+        const stringToBytes = (str) => {
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) {
+                bytes[i] = str.charCodeAt(i);
+            }
+            return bytes;
+        };
+        // Write files
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(projectFolder, `${projectName}.csproj`), stringToBytes(csprojContent));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(projectFolder, 'Program.cs'), stringToBytes(programContent));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(projectFolder, 'GENGORA.md'), stringToBytes(markerContent));
+        vscode.window.showInformationMessage(`Gengora: Created sample generator project '${projectName}'`, 'Open Folder').then((selection) => {
+            if (selection === 'Open Folder') {
+                vscode.commands.executeCommand('revealInExplorer', projectFolder);
+            }
+        });
+        outputChannel.appendLine(`Created sample generator project: ${projectFolder.fsPath}`);
+    }
+    catch (error) {
+        vscode.window.showErrorMessage(`Gengora: Failed to create project - ${error}`);
+    }
 }
 async function startLanguageServer(context) {
     const config = vscode.workspace.getConfiguration('gengora');
@@ -310,7 +509,7 @@ function handleDiagnostics(notification) {
         outputChannel.appendLine(`  [${diagnostic.severity}] ${diagnostic.id}: ${diagnostic.message} at ${location}`);
     }
     if (notification.isCompilationError) {
-        vscode.window.showErrorMessage(`Gengora: Compilation Failed With ${notification.diagnostics.length} Error(s)`, 'Show Output').then(selection => {
+        vscode.window.showErrorMessage(`Gengora: Compilation Failed With ${notification.diagnostics.length} Error(s)`, 'Show Output').then((selection) => {
             if (selection === 'Show Output') {
                 outputChannel.show();
             }
