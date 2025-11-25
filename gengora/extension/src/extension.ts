@@ -333,45 +333,102 @@ async function createSampleGeneratorCommand(context: vscode.ExtensionContext): P
         targetFolder = selected.uri;
     }
 
-    // Ask for project name
-    const projectName = await vscode.window.showInputBox({
-        prompt: 'Enter the generator project name',
-        value: 'MyGenerator',
-        validateInput: (value: string) => {
-            if (!value || value.trim().length === 0) {
-                return 'Project name is required';
-            }
-            if (!/^[a-zA-Z][a-zA-Z0-9_.]*$/.test(value)) {
-                return 'Project name must start with a letter and contain only letters, numbers, dots, and underscores';
-            }
-            return null;
+    // Show multi-select quick pick for generator types
+    interface GeneratorQuickPickItem extends vscode.QuickPickItem {
+        id: 'simple' | 'advanced';
+    }
+
+    const generatorOptions: GeneratorQuickPickItem[] = [
+        {
+            id: 'simple',
+            label: '$(file-code) Simple Generator',
+            description: 'Basic file generator',
+            detail: 'A minimal generator that creates companion files for each .cs file. Perfect for learning Gengora.',
+            picked: true
+        },
+        {
+            id: 'advanced',
+            label: '$(symbol-class) Advanced Generator',
+            description: 'Class-based code generator',
+            detail: 'A more sophisticated generator that parses C# classes and generates extension methods.',
+            picked: false
         }
+    ];
+
+    const selectedGenerators = await vscode.window.showQuickPick(generatorOptions, {
+        canPickMany: true,
+        placeHolder: 'Select generator template(s) to create',
+        title: 'Gengora: Create Sample Generator'
     });
 
-    if (!projectName) {
+    if (!selectedGenerators || selectedGenerators.length === 0) {
         return;
     }
 
+    // Helper function to convert string to Uint8Array
+    const stringToBytes = (str: string): Uint8Array => {
+        const bytes = new Uint8Array(str.length);
+        for (let i = 0; i < str.length; i++) {
+            bytes[i] = str.charCodeAt(i);
+        }
+        return bytes;
+    };
+
+    const createdProjects: string[] = [];
+
+    for (const generator of selectedGenerators) {
+        try {
+            if (generator.id === 'simple') {
+                await createSimpleGenerator(targetFolder, stringToBytes);
+                createdProjects.push('SimpleGenerator');
+            } else if (generator.id === 'advanced') {
+                await createAdvancedGenerator(targetFolder, stringToBytes);
+                createdProjects.push('AdvancedGenerator');
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Gengora: Failed to create ${generator.label} - ${error}`);
+        }
+    }
+
+    if (createdProjects.length > 0) {
+        vscode.window.showInformationMessage(
+            `Gengora: Created sample generator(s): ${createdProjects.join(', ')}`,
+            'Open Folder'
+        ).then((selection: string | undefined) => {
+            if (selection === 'Open Folder') {
+                const firstProject = vscode.Uri.joinPath(targetFolder, createdProjects[0]);
+                vscode.commands.executeCommand('revealInExplorer', firstProject);
+            }
+        });
+
+        log(`Created sample generator projects: ${createdProjects.join(', ')}`);
+    }
+}
+
+/**
+ * Creates a simple generator project.
+ */
+async function createSimpleGenerator(
+    targetFolder: vscode.Uri,
+    stringToBytes: (str: string) => Uint8Array
+): Promise<void> {
+    const projectName = 'SimpleGenerator';
     const projectFolder = vscode.Uri.joinPath(targetFolder, projectName);
 
     // Check if folder already exists
     try {
         await vscode.workspace.fs.stat(projectFolder);
-        vscode.window.showErrorMessage(`Gengora: Folder '${projectName}' already exists`);
-        return;
-    } catch {
+        throw new Error(`Folder '${projectName}' already exists`);
+    } catch (e) {
+        if (e instanceof Error && e.message.includes('already exists')) {
+            throw e;
+        }
         // Folder doesn't exist - good
     }
 
-    try {
-        // Create project folder
-        await vscode.workspace.fs.createDirectory(projectFolder);
+    await vscode.workspace.fs.createDirectory(projectFolder);
 
-        // Read sample files from extension
-        const samplesPath = context.asAbsolutePath('samples/BasicGenerator');
-
-        // Create .csproj file
-        const csprojContent = `<Project Sdk="Microsoft.NET.Sdk">
+    const csprojContent = `<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -388,16 +445,15 @@ async function createSampleGeneratorCommand(context: vscode.ExtensionContext): P
 </Project>
 `;
 
-        // Create Program.cs file  
-        const programContent = `using System;
+    const programContent = `using System;
 using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
 
-namespace ${projectName};
+namespace SimpleGenerator;
 
 /// <summary>
-/// Gengora code generator.
+/// Simple Gengora code generator.
 /// Reads JSON input from stdin and writes generated C# code to files.
 /// </summary>
 public class Program
@@ -432,7 +488,7 @@ public class Program
         var outputFile = Path.Combine(outputPath, $"{fileName}.Generated.cs");
 
         var code = $@"// <auto-generated>
-// Generated by ${projectName}
+// Generated by SimpleGenerator
 // Source: {file.Path}
 // </auto-generated>
 
@@ -456,11 +512,9 @@ public record GeneratorInput(List<InputFile> Files, string? OutputDirectory);
 public record InputFile(string Path, string Content);
 `;
 
-        // Create marker file
-        const markerContent = `# Gengora Generator Project
+    const readmeContent = `# Simple Generator
 
-This file marks this directory as a Gengora generator project.
-The presence of \`GengoraGeneratorMarker\` in the .csproj is what Gengora looks for.
+A minimal Gengora code generator that creates companion files.
 
 ## How it works
 
@@ -486,43 +540,237 @@ The generator receives JSON input on stdin:
 Print \`EMIT: /path/to/generated/file.cs\` to stdout for each generated file.
 `;
 
-        // Helper function to convert string to Uint8Array
-        const stringToBytes = (str: string): Uint8Array => {
-            const bytes = new Uint8Array(str.length);
-            for (let i = 0; i < str.length; i++) {
-                bytes[i] = str.charCodeAt(i);
-            }
-            return bytes;
-        };
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, `${projectName}.csproj`),
+        stringToBytes(csprojContent)
+    );
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, 'Program.cs'),
+        stringToBytes(programContent)
+    );
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, 'README.md'),
+        stringToBytes(readmeContent)
+    );
+}
 
-        // Write files
-        await vscode.workspace.fs.writeFile(
-            vscode.Uri.joinPath(projectFolder, `${projectName}.csproj`),
-            stringToBytes(csprojContent)
-        );
-        await vscode.workspace.fs.writeFile(
-            vscode.Uri.joinPath(projectFolder, 'Program.cs'),
-            stringToBytes(programContent)
-        );
-        await vscode.workspace.fs.writeFile(
-            vscode.Uri.joinPath(projectFolder, 'GENGORA.md'),
-            stringToBytes(markerContent)
-        );
+/**
+ * Creates an advanced generator project with class parsing.
+ */
+async function createAdvancedGenerator(
+    targetFolder: vscode.Uri,
+    stringToBytes: (str: string) => Uint8Array
+): Promise<void> {
+    const projectName = 'AdvancedGenerator';
+    const projectFolder = vscode.Uri.joinPath(targetFolder, projectName);
 
-        vscode.window.showInformationMessage(
-            `Gengora: Created sample generator project '${projectName}'`,
-            'Open Folder'
-        ).then((selection: string | undefined) => {
-            if (selection === 'Open Folder') {
-                vscode.commands.executeCommand('revealInExplorer', projectFolder);
-            }
-        });
-
-        log(`Created sample generator project: ${projectFolder.fsPath}`);
-
-    } catch (error) {
-        vscode.window.showErrorMessage(`Gengora: Failed to create project - ${error}`);
+    // Check if folder already exists
+    try {
+        await vscode.workspace.fs.stat(projectFolder);
+        throw new Error(`Folder '${projectName}' already exists`);
+    } catch (e) {
+        if (e instanceof Error && e.message.includes('already exists')) {
+            throw e;
+        }
+        // Folder doesn't exist - good
     }
+
+    await vscode.workspace.fs.createDirectory(projectFolder);
+
+    const csprojContent = `<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Gengora Marker: This project is a code generator -->
+  <PropertyGroup>
+    <GengoraGeneratorMarker>true</GengoraGeneratorMarker>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+</Project>
+`;
+
+    const programContent = `using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Collections.Generic;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace AdvancedGenerator;
+
+/// <summary>
+/// Advanced Gengora code generator that uses Roslyn to parse C# code.
+/// Generates extension methods for classes with properties.
+/// </summary>
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        // Read input from stdin
+        var inputJson = Console.In.ReadToEnd();
+        
+        // Parse input
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var input = JsonSerializer.Deserialize<GeneratorInput>(inputJson, options);
+        
+        if (input?.Files == null || input.Files.Count == 0)
+        {
+            Console.Error.WriteLine("No files provided in input");
+            return;
+        }
+
+        // Generate code for each input file
+        foreach (var file in input.Files)
+        {
+            GenerateCode(file, input.OutputDirectory);
+        }
+    }
+
+    private static void GenerateCode(InputFile file, string? outputDir)
+    {
+        // Parse the C# file using Roslyn
+        var tree = CSharpSyntaxTree.ParseText(file.Content);
+        var root = tree.GetCompilationUnitRoot();
+
+        // Find all classes with properties
+        var classes = root.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .Where(c => c.Members.OfType<PropertyDeclarationSyntax>().Any())
+            .ToList();
+
+        if (classes.Count == 0)
+        {
+            return; // No classes with properties to process
+        }
+
+        var outputPath = outputDir ?? Path.GetDirectoryName(file.Path) ?? ".";
+        var fileName = Path.GetFileNameWithoutExtension(file.Path);
+        var outputFile = Path.Combine(outputPath, $"{fileName}.Extensions.Generated.cs");
+
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated>");
+        sb.AppendLine("// Generated by AdvancedGenerator using Roslyn");
+        sb.AppendLine($"// Source: {file.Path}");
+        sb.AppendLine("// </auto-generated>");
+        sb.AppendLine();
+
+        // Get namespace from source file
+        var namespaceDecl = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        var namespaceName = namespaceDecl?.Name.ToString() ?? "Generated";
+        
+        sb.AppendLine($"namespace {namespaceName};");
+        sb.AppendLine();
+
+        foreach (var classDecl in classes)
+        {
+            var className = classDecl.Identifier.Text;
+            var properties = classDecl.Members.OfType<PropertyDeclarationSyntax>().ToList();
+
+            sb.AppendLine($"public static class {className}Extensions");
+            sb.AppendLine("{");
+            
+            // Generate a With method for each property
+            foreach (var prop in properties)
+            {
+                var propName = prop.Identifier.Text;
+                var propType = prop.Type.ToString();
+                
+                sb.AppendLine($"    /// <summary>Creates a copy with a new {propName} value.</summary>");
+                sb.AppendLine($"    public static {className} With{propName}(this {className} source, {propType} value)");
+                sb.AppendLine("    {");
+                sb.AppendLine($"        return source with {{ {propName} = value }};");
+                sb.AppendLine("    }");
+                sb.AppendLine();
+            }
+
+            // Generate a ToDebugString method
+            sb.AppendLine($"    /// <summary>Returns a debug string with all property values.</summary>");
+            sb.AppendLine($"    public static string ToDebugString(this {className} source)");
+            sb.AppendLine("    {");
+            sb.Append("        return $\"");
+            sb.Append(className);
+            sb.Append(" {{ ");
+            sb.Append(string.Join(", ", properties.Select(p => $"{p.Identifier.Text} = {{source.{p.Identifier.Text}}}")));
+            sb.AppendLine(" }}\";");
+            sb.AppendLine("    }");
+            
+            sb.AppendLine("}");
+            sb.AppendLine();
+        }
+
+        File.WriteAllText(outputFile, sb.ToString());
+        Console.WriteLine($"EMIT: {outputFile}");
+    }
+}
+
+// Input types that Gengora sends
+public record GeneratorInput(List<InputFile> Files, string? OutputDirectory);
+public record InputFile(string Path, string Content);
+`;
+
+    const readmeContent = `# Advanced Generator
+
+A Roslyn-powered Gengora code generator that creates extension methods for classes.
+
+## Features
+
+- Uses **Microsoft.CodeAnalysis.CSharp** to parse C# syntax
+- Generates \`With*\` methods for immutable updates (works with records)
+- Generates \`ToDebugString()\` for debugging
+
+## Example
+
+Given this input:
+\`\`\`csharp
+public record Person(string Name, int Age);
+\`\`\`
+
+Generates:
+\`\`\`csharp
+public static class PersonExtensions
+{
+    public static Person WithName(this Person source, string value)
+        => source with { Name = value };
+    
+    public static Person WithAge(this Person source, int value)
+        => source with { Age = value };
+    
+    public static string ToDebugString(this Person source)
+        => $"Person {{ Name = {source.Name}, Age = {source.Age} }}";
+}
+\`\`\`
+
+## How it works
+
+1. Parses C# files using Roslyn's syntax API
+2. Finds classes/records with properties
+3. Generates extension methods for each property
+`;
+
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, `${projectName}.csproj`),
+        stringToBytes(csprojContent)
+    );
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, 'Program.cs'),
+        stringToBytes(programContent)
+    );
+    await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(projectFolder, 'README.md'),
+        stringToBytes(readmeContent)
+    );
 }
 
 async function startLanguageServer(context: vscode.ExtensionContext): Promise<void> {

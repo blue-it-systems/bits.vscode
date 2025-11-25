@@ -5,6 +5,23 @@ All notable changes to the Gengora extension will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2025-11-25
+
+### Fixed
+
+- **Server bundle now includes all required files**: Fixed "libhostpolicy.dylib not found" error when running from marketplace install. The bundle now includes `Gengora.Server.runtimeconfig.json` and all dependency DLLs required to run as a framework-dependent app.
+
+### Added
+
+- **Sample Generator Templates**: Create Sample Generator command now offers two templates:
+  - **Simple Generator** (default): Minimal file-based generator - perfect for learning
+  - **Advanced Generator**: Roslyn-powered generator that parses C# classes and generates extension methods
+
+### Changed
+
+- Sample generator creation now uses multi-select QuickPick instead of text input
+- Improved test coverage for bundled server files validation
+
 ## [0.9.0] - 2025-11-25
 
 ### Changed
