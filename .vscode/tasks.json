@@ -47,7 +47,7 @@
       "label": "dotnet: build gengora generator",
       "type": "shell",
       "command": "dotnet",
-      "args": ["build", "${workspaceFolder}/gengora/test-workspace"],
+      "args": ["build", "${workspaceFolder}/gengora/test-workspace/SampleGenerator"],
       "presentation": { "reveal": "always", "panel": "shared" },
       "problemMatcher": ["$msCompile"],
       "options": { "cwd": "${workspaceFolder}/gengora/test-workspace" }

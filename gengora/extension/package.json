@@ -1,0 +1,96 @@
+{
+  "name": "gengora",
+  "displayName": "Gengora - Live Code Generation",
+  "description": "Live code generation with hot-reload support for .NET",
+  "version": "0.3.0",
+  "publisher": "blue-it-systems",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blue-it-systems/bits.vscode"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "code generation",
+    "hot-reload",
+    ".NET",
+    "C#",
+    "Roslyn"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.csproj"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gengora.recompile",
+        "title": "Gengora: Recompile Generator"
+      },
+      {
+        "command": "gengora.stop",
+        "title": "Gengora: Stop Generator"
+      },
+      {
+        "command": "gengora.showOutput",
+        "title": "Gengora: Show Output"
+      }
+    ],
+    "configuration": {
+      "title": "Gengora",
+      "properties": {
+        "gengora.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Gengora language server executable. If empty, uses the bundled server."
+        },
+        "gengora.logLevel": {
+          "type": "string",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
+          "default": "debug",
+          "description": "Log level for the Gengora extension."
+        },
+        "gengora.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start watching for generator projects when the workspace opens."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "build": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.10",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0"
+  }
+}
