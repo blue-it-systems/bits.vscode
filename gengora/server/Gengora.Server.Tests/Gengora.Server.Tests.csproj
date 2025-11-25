@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Exe</OutputType>
+		<IsTestProject>true</IsTestProject>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<AssemblyName>Gengora.Server.Tests</AssemblyName>
 		<RootNamespace>Gengora.Server.Tests</RootNamespace>
 		<Description>Unit and integration tests for Gengora Language Server</Description>
