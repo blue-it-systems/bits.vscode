@@ -5,6 +5,17 @@ All notable changes to the Gengora extension will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2025-11-25
+
+### Fixed
+
+- Don't auto-start the language server when no workspace folder or root path is provided. The extension now avoids repeatedly attempting to start the server when no workspace is open, preventing noisy popups and crash loops.
+- Sanitized output formatting: server log artifacts (for example numeric event ids like [0]) are filtered from the extension output channel to keep logs readable.
+
+### Changed
+
+- Improved activation flows when VS Code opens with no workspace. The Start Server command still allows manual start and will show a helpful message when needed.
+
 ## [0.9.1] - 2025-11-25
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Gengora - Live Code Generation for VS Code
 
-[![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-blue.svg)](https://code.visualstudio.com/)
 
@@ -154,6 +154,11 @@ This extension is optimized for minimal footprint:
 - Requires MSBuild SDK to be properly configured
 
 ## Release Notes
+
+### 0.9.2
+
+- Fixed: The extension now avoids attempting to start the language server when no workspace folder is open. This prevents repeated popups and crash loops when VS Code is started without a folder. The Start Server command can still be used manually and will provide an actionable message if no workspace is open.
+- Improved logging: the output channel now filters noisy server log artifacts (for example numeric event ids like [0]) to keep logs cleaner and readable.
 
 ### 0.4.0
 

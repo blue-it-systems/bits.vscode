@@ -108,6 +108,22 @@ suite('Gengora Extension Test Suite', () => {
         }
     });
 
+    test('Start Server command should not throw when no workspace is open', async () => {
+        const extension = vscode.extensions.getExtension(EXTENSION_ID);
+        assert.ok(extension, 'Extension should exist');
+
+        if (!extension.isActive) {
+            await extension.activate();
+        }
+
+        try {
+            await vscode.commands.executeCommand('gengora.start');
+            assert.ok(true, 'Start command completed without throwing');
+        } catch (error) {
+            assert.fail(`gengora.start command threw an error: ${error}`);
+        }
+    });
+
     test('Configuration Should Have Default Values', () => {
         const config = vscode.workspace.getConfiguration('gengora');
         

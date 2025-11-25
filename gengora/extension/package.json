@@ -2,7 +2,7 @@
   "name": "gengora",
   "displayName": "Gengora - Live Code Generation",
   "description": "Live code generation with hot-reload support for .NET. Write C# generators that automatically recompile and re-run when source files change.",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "publisher": "bits",
   "author": {
     "name": "Blue IT Systems GmbH",

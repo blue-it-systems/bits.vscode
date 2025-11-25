@@ -12,6 +12,8 @@ import {
 let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
+// Tracks whether we've warned the user about missing workspace folders to avoid popup spam
+let hasWarnedNoWorkspace = false;
 let currentState: string = 'Idle';
 let extensionContext: vscode.ExtensionContext;
 
@@ -32,6 +34,80 @@ function log(message: string): void {
     logToFile(message);
     if (outputChannel) {
         outputChannel.appendLine(message);
+    }
+}
+
+/**
+ * Output channel wrapper that filters noisy server log parts (like numeric event ids in brackets)
+ * before forwarding messages to the real vscode.OutputChannel. This lets us keep output readable
+ * (for example removing the trailing "[0]" you see in .NET console logs).
+ */
+class FilteredOutputChannel implements vscode.OutputChannel {
+    private readonly underlying: vscode.OutputChannel;
+
+    constructor(underlying: vscode.OutputChannel) {
+        this.underlying = underlying;
+    }
+
+    get name(): string {
+        return (this.underlying as any)?.name ?? 'Gengora';
+    }
+
+    append(value: string): void {
+        this.underlying.append(this.filter(value));
+    }
+
+    appendLine(value: string): void {
+        this.underlying.appendLine(this.filter(value));
+    }
+
+    clear(): void {
+        this.underlying.clear();
+    }
+
+    // The OutputChannel.show API has two overloads - either show(preserveFocus?: boolean)
+    // or show(column?: ViewColumn, preserveFocus?: boolean). Implement a flexible wrapper
+    // that forwards the parameters to the underlying channel.
+    show(columnOrPreserve?: boolean | vscode.ViewColumn, preserveFocus?: boolean): void {
+        if (typeof columnOrPreserve === 'boolean' || typeof columnOrPreserve === 'undefined') {
+            // show(preserveFocus?: boolean)
+            this.underlying.show(columnOrPreserve as boolean | undefined);
+        } else {
+            // show(column?: ViewColumn, preserveFocus?: boolean)
+            (this.underlying as any).show(columnOrPreserve as vscode.ViewColumn, preserveFocus);
+        }
+    }
+
+    hide(): void {
+        if (typeof (this.underlying as any).hide === 'function') {
+            (this.underlying as any).hide();
+        }
+    }
+
+    replace(value: string): void {
+        // Some implementations of OutputChannel provide `replace`. Forward it after filtering.
+        if (typeof (this.underlying as any).replace === 'function') {
+            (this.underlying as any).replace(this.filter(value));
+        } else {
+            // Fallback to clearing then appending
+            this.clear();
+            this.appendLine(value);
+        }
+    }
+
+    dispose(): void {
+        this.underlying.dispose();
+    }
+
+    private filter(value: string): string {
+        if (!value) return value;
+
+        // Remove any simple numeric event ids like [0], [123] that come from .NET log formatting
+        // Leave other content intact and preserve newlines.
+        return value
+            .split('\n')
+            .map(line => line.replace(/\[\d+\]/g, '').replace(/\s+$/, ''))
+            .join('\n');
     }
 }
 
@@ -70,7 +146,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     
     try {
         extensionContext = context;
-        outputChannel = vscode.window.createOutputChannel('Gengora');
+        // Create a filtered output channel so we can sanitize noisy server logs
+        const rawOutput = vscode.window.createOutputChannel('Gengora');
+        outputChannel = new FilteredOutputChannel(rawOutput);
         context.subscriptions.push(outputChannel);
 
         log('Gengora Extension Activating...');
@@ -105,12 +183,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         if (autoStart) {
             try {
-                await startLanguageServer(context);
+                const started = await startLanguageServer(context, false);
+                if (!started) {
+                    log('AutoStart: language server not started (no workspace or explicitly disabled)');
+                }
             } catch (error) {
                 log(`ERROR starting language server: ${error}`);
                 vscode.window.showErrorMessage(`Gengora: Failed to start server - ${error}`);
             }
         }
+
+        // If the workspace changes at runtime (a user opens a folder), try to auto-start once
+        context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async _e => {
+            const cfg = vscode.workspace.getConfiguration('gengora');
+            const shouldAuto = cfg.get<boolean>('autoStart', true);
+            if (!shouldAuto) return;
+
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0 && !client) {
+                log('Workspace folder added - attempting to start language server automatically');
+                try {
+                    await startLanguageServer(context, false);
+                } catch (err) {
+                    log(`Failed to start language server after workspace change: ${err}`);
+                }
+            }
+        }));
 
         log('Gengora Extension Activated Successfully');
         log('========================================');
@@ -291,8 +388,10 @@ async function startCommand(): Promise<void> {
         return;
     }
 
-    await startLanguageServer(extensionContext);
-    vscode.window.showInformationMessage('Gengora: Server started');
+    const started = await startLanguageServer(extensionContext, true);
+    if (started) {
+        vscode.window.showInformationMessage('Gengora: Server started');
+    }
 }
 
 /**
@@ -304,8 +403,10 @@ async function restartCommand(): Promise<void> {
         client = undefined;
     }
 
-    await startLanguageServer(extensionContext);
-    vscode.window.showInformationMessage('Gengora: Server restarted');
+    const started = await startLanguageServer(extensionContext, true);
+    if (started) {
+        vscode.window.showInformationMessage('Gengora: Server restarted');
+    }
 }
 
 /**
@@ -439,7 +540,7 @@ async function createSimpleGenerator(
 
   <!-- Gengora Marker: This project is a code generator -->
   <PropertyGroup>
-    <GengoraGeneratorMarker>true</GengoraGeneratorMarker>
+    <IsGeneratorProject>true</IsGeneratorProject>
   </PropertyGroup>
 
 </Project>
@@ -588,7 +689,7 @@ async function createAdvancedGenerator(
 
   <!-- Gengora Marker: This project is a code generator -->
   <PropertyGroup>
-    <GengoraGeneratorMarker>true</GengoraGeneratorMarker>
+    <IsGeneratorProject>true</IsGeneratorProject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -773,7 +874,23 @@ public static class PersonExtensions
     );
 }
 
-async function startLanguageServer(context: vscode.ExtensionContext): Promise<void> {
+async function startLanguageServer(context: vscode.ExtensionContext, showUserMessage: boolean = false): Promise<boolean> {
+    // Ensure we have a workspace - the server requires a workspace/root path to initialize.
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        log('Not starting language server: No Workspace Folders Or Root Path Provided');
+        // If this was explicitly requested by the user, show an actionable message. For auto-start we avoid spamming popups.
+        if (showUserMessage) {
+            vscode.window.showErrorMessage('Gengora: No workspace folder found. Please open a workspace folder or workspace file to use Gengora.');
+        } else if (!hasWarnedNoWorkspace) {
+            // Only write to output once to avoid popup spam
+            outputChannel.appendLine('Gengora: No workspace folder found — server will not auto-start. Use "Gengora: Start Server" after opening a folder.');
+            hasWarnedNoWorkspace = true;
+        }
+
+        return false;
+    }
+
     log('Starting Language Server...');
     
     const config = vscode.workspace.getConfiguration('gengora');
@@ -852,6 +969,7 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
     try {
         await client.start();
         log('Language Server Started Successfully');
+        return true;
     } catch (error) {
         log(`ERROR starting client: ${error}`);
         client = undefined!;
