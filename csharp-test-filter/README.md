@@ -17,7 +17,16 @@ cursor position for seamless TUnit debugging in VS Code.
 
 ## Quick Start
 
-### 1. Add to Your Debug Configuration
+### 1. Add the Debug Configuration
+
+**Option A: Use "Add Configuration" (Recommended)**
+
+1. Open `.vscode/launch.json` (or create it via Run > Add Configuration)
+2. Click "Add Configuration..." button
+3. Select **"C# Test Filter: Debug TUnit Test"**
+4. Done! The configuration is automatically added
+
+**Option B: Add Manually**
 
 Add this to your `.vscode/launch.json`:
 
@@ -30,7 +39,7 @@ Add this to your `.vscode/launch.json`:
   "program": "dotnet",
   "args": [
     "exec",
-    "${workspaceFolder}/bin/Debug/net9.0/YourProject.dll",
+    "${command:csharp-test-filter.getDllPath}",
     "--treenode-filter",
     "${command:csharp-test-filter.getFilter}"
   ],
@@ -39,6 +48,10 @@ Add this to your `.vscode/launch.json`:
   "stopAtEntry": false
 }
 ```
+
+**Note**: The `getDllPath` command automatically finds the correct DLL path based
+on your current test file's project. This works with multiple test projects -
+just open a test file from any project and debug!
 
 ### 2. Set Breakpoints & Debug
 
@@ -80,6 +93,10 @@ The extension generates TUnit-compatible filters:
 
 - `csharpTestFilter.showNotifications`: Show notification messages
   (default: `true`)
+- `csharpTestFilter.showDebugOutput`: Show debug output in Output panel
+  (default: `false`)
+- `csharpTestFilter.buildConfiguration`: Build configuration for DLL path -
+  `Debug` or `Release` (default: `Debug`)
 
 ## Development
 

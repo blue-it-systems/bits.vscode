@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-01-07
+
+### Added
+
+- **Dynamic DLL Path Detection**: New `getDllPath` command that automatically
+  finds the correct DLL path based on the current test file's project
+- **Multi-Project Support**: Works seamlessly with multiple test projects in
+  the same workspace - just open a test file from any project
+- **Build Configuration Setting**: New `csharpTestFilter.buildConfiguration`
+  setting to choose between Debug and Release builds
+- **Auto-Generate Debug Configuration**: Use "Add Configuration" in launch.json
+  and select "C# Test Filter: Debug TUnit Test" to automatically add the
+  configuration
+
+### How It Works
+
+The new `getDllPath` command:
+1. Finds the nearest `.csproj` file for the current test file
+2. Parses the `TargetFramework` and `AssemblyName` from the project file
+3. Constructs the correct DLL path automatically
+
+**Easy Setup**: Open launch.json, click "Add Configuration...", and select
+"C# Test Filter: Debug TUnit Test" - no manual configuration needed!
+
 ## [1.0.5] - 2025-11-10
 
 ### Added

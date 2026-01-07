@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
 interface TestScopeInfo {
     assembly: string;
@@ -7,10 +9,10 @@ interface TestScopeInfo {
     filter: string;
 }
 
-interface SymbolInfo {
-    name: string;
-    kind: vscode.SymbolKind;
-    range: vscode.Range;
+interface ProjectInfo {
+    projectPath: string;
+    targetFramework: string;
+    assemblyName: string;
 }
 
 // Cache for document symbols to avoid repeated requests
@@ -102,7 +104,50 @@ export function activate(context: vscode.ExtensionContext) {
         return testScopeInfo?.methodName || '';
     });
 
-    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput, getFilter, getClassName, getMethodName);
+    // Register command to get the DLL path dynamically
+    const getDllPath = vscode.commands.registerCommand('csharp-test-filter.getDllPath', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            console.log('[C# Test Filter] No active editor for getDllPath');
+            return '';
+        }
+
+        const filePath = editor.document.uri.fsPath;
+        const projectInfo = await findProjectInfo(filePath);
+
+        if (!projectInfo) {
+            console.log('[C# Test Filter] Could not find project info');
+            return '';
+        }
+
+        const config = vscode.workspace.getConfiguration('csharpTestFilter');
+        const buildConfiguration = config.get<string>('buildConfiguration', 'Debug');
+
+        const projectDir = path.dirname(projectInfo.projectPath);
+        const dllPath = path.join(projectDir, 'bin', buildConfiguration, projectInfo.targetFramework, `${projectInfo.assemblyName}.dll`);
+
+        console.log(`[C# Test Filter] Generated DLL path: ${dllPath}`);
+
+        // Check if debug output is enabled
+        const showDebugOutput = config.get<boolean>('showDebugOutput', false);
+        if (showDebugOutput && outputChannel) {
+            outputChannel.appendLine(`=== DLL Path Debug Info ===`);
+            outputChannel.appendLine(`Project: ${projectInfo.projectPath}`);
+            outputChannel.appendLine(`Target Framework: ${projectInfo.targetFramework}`);
+            outputChannel.appendLine(`Assembly Name: ${projectInfo.assemblyName}`);
+            outputChannel.appendLine(`Build Configuration: ${buildConfiguration}`);
+            outputChannel.appendLine(`DLL Path: ${dllPath}`);
+            outputChannel.show(true);
+        }
+
+        return dllPath;
+    });
+
+    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput, getFilter, getClassName, getMethodName, getDllPath);
+
+    // Register debug configuration provider for TUnit
+    const debugConfigProvider = vscode.debug.registerDebugConfigurationProvider('coreclr', new TUnitDebugConfigurationProvider());
+    context.subscriptions.push(debugConfigProvider);
 }
 
 async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
@@ -511,6 +556,115 @@ function findMethodName(lines: string[], currentLine: number): string | undefine
     }
     
     return inMethod ? foundMethod : undefined;
+}
+
+/**
+ * Debug Configuration Provider for TUnit tests
+ * Provides initial debug configurations when users create launch.json or add configurations
+ */
+class TUnitDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
+
+    /**
+     * Provide initial debug configurations for a new launch.json
+     */
+    provideDebugConfigurations(_folder: vscode.WorkspaceFolder | undefined): vscode.ProviderResult<vscode.DebugConfiguration[]> {
+        return [this.createTUnitDebugConfig()];
+    }
+
+    /**
+     * Create the TUnit debug configuration
+     */
+    private createTUnitDebugConfig(): vscode.DebugConfiguration {
+        return {
+            name: "Debug TUnit Test",
+            type: "coreclr",
+            request: "launch",
+            preLaunchTask: "build",
+            program: "dotnet",
+            args: [
+                "exec",
+                "${command:csharp-test-filter.getDllPath}",
+                "--treenode-filter",
+                "${command:csharp-test-filter.getFilter}"
+            ],
+            cwd: "${workspaceFolder}",
+            console: "integratedTerminal",
+            stopAtEntry: false
+        };
+    }
+}
+
+/**
+ * Find the .csproj file for the given source file and extract project information
+ */
+async function findProjectInfo(sourceFilePath: string): Promise<ProjectInfo | undefined> {
+    const csprojPath = await findCsprojFile(sourceFilePath);
+    if (!csprojPath) {
+        console.log('[C# Test Filter] No .csproj file found');
+        return undefined;
+    }
+
+    return await parseCsprojFile(csprojPath);
+}
+
+/**
+ * Find the nearest .csproj file by walking up the directory tree
+ */
+async function findCsprojFile(filePath: string): Promise<string | undefined> {
+    let currentDir = path.dirname(filePath);
+    const rootDir = path.parse(currentDir).root;
+
+    while (currentDir !== rootDir) {
+        try {
+            const files = await fs.promises.readdir(currentDir);
+            const csprojFile = files.find(f => f.endsWith('.csproj'));
+            if (csprojFile) {
+                return path.join(currentDir, csprojFile);
+            }
+        } catch {
+            // Directory not readable, continue to parent
+        }
+        currentDir = path.dirname(currentDir);
+    }
+
+    return undefined;
+}
+
+/**
+ * Parse a .csproj file to extract project information
+ */
+async function parseCsprojFile(csprojPath: string): Promise<ProjectInfo | undefined> {
+    try {
+        const content = await fs.promises.readFile(csprojPath, 'utf-8');
+
+        // Extract TargetFramework (handles both TargetFramework and TargetFrameworks)
+        let targetFramework = 'net9.0'; // Default fallback
+        const targetFrameworkMatch = content.match(/<TargetFramework>([^<]+)<\/TargetFramework>/);
+        const targetFrameworksMatch = content.match(/<TargetFrameworks>([^<]+)<\/TargetFrameworks>/);
+
+        if (targetFrameworkMatch) {
+            targetFramework = targetFrameworkMatch[1].trim();
+        } else if (targetFrameworksMatch) {
+            // If multiple frameworks, use the first one
+            targetFramework = targetFrameworksMatch[1].split(';')[0].trim();
+        }
+
+        // Extract AssemblyName, fallback to project file name
+        let assemblyName = path.basename(csprojPath, '.csproj');
+        const assemblyNameMatch = content.match(/<AssemblyName>([^<]+)<\/AssemblyName>/);
+        if (assemblyNameMatch) {
+            assemblyName = assemblyNameMatch[1].trim();
+        }
+
+        return {
+            projectPath: csprojPath,
+            targetFramework,
+            assemblyName
+        };
+    } catch (error) {
+        console.error('[C# Test Filter] Error parsing .csproj:', error);
+        return undefined;
+    }
 }
 
 export function deactivate() {}
