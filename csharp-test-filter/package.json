@@ -2,7 +2,7 @@
   "name": "csharp-test-filter",
   "displayName": "C# Test Filter Helper",
   "description": "Automatically detect C# test scope (assembly/class/method) for TUnit debugging",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "bits",
   "icon": "images/icon.png",
   "author": {
@@ -65,11 +65,11 @@
               "program": "dotnet",
               "args": [
                 "exec",
-                "\\${command:csharp-test-filter.getDllPath}",
+                "${command:csharp-test-filter.getDllPath}",
                 "--treenode-filter",
-                "\\${command:csharp-test-filter.getFilter}"
+                "${command:csharp-test-filter.getFilter}"
               ],
-              "cwd": "\\${workspaceFolder}",
+              "cwd": "${workspaceFolder}",
               "console": "integratedTerminal",
               "stopAtEntry": false
             }
