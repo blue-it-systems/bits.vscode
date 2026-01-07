@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2025-01-07
+
+### Fixed
+
+- Fixed debug configuration: use DLL path directly as `program` instead of
+  `dotnet exec` for proper debugger attachment
+
 ## [1.1.1] - 2025-01-07
 
 ### Fixed

@@ -580,10 +580,8 @@ class TUnitDebugConfigurationProvider implements vscode.DebugConfigurationProvid
             type: "coreclr",
             request: "launch",
             preLaunchTask: "build",
-            program: "dotnet",
+            program: "${command:csharp-test-filter.getDllPath}",
             args: [
-                "exec",
-                "${command:csharp-test-filter.getDllPath}",
                 "--treenode-filter",
                 "${command:csharp-test-filter.getFilter}"
             ],
