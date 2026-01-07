@@ -19,31 +19,43 @@ cursor position for seamless TUnit debugging in VS Code.
 
 ### 1. Add the Debug Configuration
 
-**Option A: Use "Add Configuration" (Recommended)**
+**Easy way**: Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run
+**"C# Test Filter: Add Debug Configuration"** - this automatically creates
+the launch.json with all required settings.
 
-1. Open `.vscode/launch.json` (or create it via Run > Add Configuration)
-2. Click "Add Configuration..." button
-3. Select **"C# Test Filter: Debug TUnit Test"**
-4. Done! The configuration is automatically added
-
-**Option B: Add Manually**
-
-Add this to your `.vscode/launch.json`:
+**Manual way**: Add this to your `.vscode/launch.json`:
 
 ```json
 {
-  "name": "Debug TUnit Test",
-  "type": "coreclr",
-  "request": "launch",
-  "preLaunchTask": "build",
-  "program": "${command:csharp-test-filter.getDllPath}",
-  "args": [
-    "--treenode-filter",
-    "${command:csharp-test-filter.getFilter}"
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug TUnit Test",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${input:dllPath}",
+      "args": [
+        "--treenode-filter",
+        "${input:testFilter}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
   ],
-  "cwd": "${workspaceFolder}",
-  "console": "integratedTerminal",
-  "stopAtEntry": false
+  "inputs": [
+    {
+      "id": "dllPath",
+      "type": "command",
+      "command": "csharp-test-filter.getDllPath"
+    },
+    {
+      "id": "testFilter",
+      "type": "command",
+      "command": "csharp-test-filter.getFilter"
+    }
+  ]
 }
 ```
 
@@ -67,6 +79,8 @@ selected!
 
 ## Commands
 
+- **C# Test Filter: Add Debug Configuration** - Adds the TUnit debug
+  configuration to your launch.json (creates file if needed)
 - **C# Test Filter: Get Current Test Scope** - Shows detected test
   information
 - **C# Test Filter: Copy Test Filter to Clipboard** - Copies the filter

@@ -2,7 +2,7 @@
   "name": "csharp-test-filter",
   "displayName": "C# Test Filter Helper",
   "description": "Automatically detect C# test scope (assembly/class/method) for TUnit debugging",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "publisher": "bits",
   "icon": "images/icon.png",
   "author": {
@@ -48,31 +48,10 @@
       {
         "command": "csharp-test-filter.copyTestFilter",
         "title": "C# Test Filter: Copy Test Filter to Clipboard"
-      }
-    ],
-    "debuggers": [
+      },
       {
-        "type": "coreclr",
-        "configurationSnippets": [
-          {
-            "label": "C# Test Filter: Debug TUnit Test",
-            "description": "Debug TUnit tests with automatic DLL and filter detection",
-            "body": {
-              "name": "Debug TUnit Test",
-              "type": "coreclr",
-              "request": "launch",
-              "preLaunchTask": "build",
-              "program": "${command:csharp-test-filter.getDllPath}",
-              "args": [
-                "--treenode-filter",
-                "${command:csharp-test-filter.getFilter}"
-              ],
-              "cwd": "${workspaceFolder}",
-              "console": "integratedTerminal",
-              "stopAtEntry": false
-            }
-          }
-        ]
+        "command": "csharp-test-filter.generateDebugConfig",
+        "title": "C# Test Filter: Add Debug Configuration"
       }
     ],
     "configuration": {

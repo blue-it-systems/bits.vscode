@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension",
+      "name": "Run Extension - TestFilter",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -11,19 +11,6 @@
       ],
       "outFiles": [
         "${workspaceFolder}/csharp-test-filter/out/**/*.js"
-      ],
-      "preLaunchTask": "${defaultBuildTask}"
-    },
-    {
-      "name": "Extension Tests",
-      "type": "extensionHost",
-      "request": "launch",
-      "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/csharp-test-filter",
-        "--extensionTestsPath=${workspaceFolder}/csharp-test-filter/out/test/suite/index"
-      ],
-      "outFiles": [
-        "${workspaceFolder}/csharp-test-filter/out/test/**/*.js"
       ],
       "preLaunchTask": "${defaultBuildTask}"
     },

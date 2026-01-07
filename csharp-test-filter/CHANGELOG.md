@@ -2,18 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.2] - 2025-01-07
+## [1.1.3] - 2025-01-07
 
-### Fixed
+### Added
 
-- Fixed debug configuration: use DLL path directly as `program` instead of
-  `dotnet exec` for proper debugger attachment
+- **Add Debug Configuration command**: New command "C# Test Filter: Add Debug
+  Configuration" that automatically creates/updates launch.json with the TUnit
+  debug configuration and required inputs
 
-## [1.1.1] - 2025-01-07
+### Changed
 
-### Fixed
+- Replaced `${command:...}` variables with `${input:...}` for launch.json
+  compatibility with coreclr debugger
+- Updated README with correct manual launch.json configuration using inputs
 
-- Fixed "Add Configuration" snippet generating invalid JSON with escaped `$` characters
+### Verified
+
+- Full integration testing: DLL path generation, test filter generation, and
+  TUnit test execution all verified working
 
 ## [1.1.0] - 2025-01-07
 
@@ -25,9 +31,6 @@ All notable changes to this project will be documented in this file.
   the same workspace - just open a test file from any project
 - **Build Configuration Setting**: New `csharpTestFilter.buildConfiguration`
   setting to choose between Debug and Release builds
-- **Auto-Generate Debug Configuration**: Use "Add Configuration" in launch.json
-  and select "C# Test Filter: Debug TUnit Test" to automatically add the
-  configuration
 
 ### How It Works
 
@@ -35,9 +38,6 @@ The new `getDllPath` command:
 1. Finds the nearest `.csproj` file for the current test file
 2. Parses the `TargetFramework` and `AssemblyName` from the project file
 3. Constructs the correct DLL path automatically
-
-**Easy Setup**: Open launch.json, click "Add Configuration...", and select
-"C# Test Filter: Debug TUnit Test" - no manual configuration needed!
 
 ## [1.0.5] - 2025-11-10
 

@@ -143,11 +143,96 @@ export function activate(context: vscode.ExtensionContext) {
         return dllPath;
     });
 
-    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput, getFilter, getClassName, getMethodName, getDllPath);
+    // Register command to generate debug configuration
+    const generateDebugConfig = vscode.commands.registerCommand('csharp-test-filter.generateDebugConfig', async () => {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return;
+        }
 
-    // Register debug configuration provider for TUnit
-    const debugConfigProvider = vscode.debug.registerDebugConfigurationProvider('coreclr', new TUnitDebugConfigurationProvider());
-    context.subscriptions.push(debugConfigProvider);
+        const workspaceFolder = workspaceFolders[0];
+        const vscodeDir = path.join(workspaceFolder.uri.fsPath, '.vscode');
+        const launchJsonPath = path.join(vscodeDir, 'launch.json');
+
+        // The configuration to add
+        const tunitConfig = {
+            name: "Debug TUnit Test",
+            type: "coreclr",
+            request: "launch",
+            preLaunchTask: "build",
+            program: "${input:dllPath}",
+            args: ["--treenode-filter", "${input:testFilter}"],
+            cwd: "${workspaceFolder}",
+            console: "integratedTerminal",
+            stopAtEntry: false
+        };
+
+        const requiredInputs = [
+            { id: "dllPath", type: "command", command: "csharp-test-filter.getDllPath" },
+            { id: "testFilter", type: "command", command: "csharp-test-filter.getFilter" }
+        ];
+
+        try {
+            // Ensure .vscode directory exists
+            if (!fs.existsSync(vscodeDir)) {
+                fs.mkdirSync(vscodeDir, { recursive: true });
+            }
+
+            let launchJson: { version: string; configurations: unknown[]; inputs?: unknown[] };
+
+            if (fs.existsSync(launchJsonPath)) {
+                // Read existing launch.json
+                const content = fs.readFileSync(launchJsonPath, 'utf-8');
+                // Remove comments for JSON parsing (simple approach)
+                const jsonContent = content.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+                launchJson = JSON.parse(jsonContent);
+
+                // Check if configuration already exists
+                const existingConfig = launchJson.configurations.find(
+                    (c: unknown) => (c as { name?: string }).name === "Debug TUnit Test"
+                );
+                if (existingConfig) {
+                    vscode.window.showInformationMessage('Debug TUnit Test configuration already exists in launch.json');
+                    return;
+                }
+
+                // Add our configuration
+                launchJson.configurations.push(tunitConfig);
+
+                // Add inputs if they don't exist
+                if (!launchJson.inputs) {
+                    launchJson.inputs = [];
+                }
+                for (const input of requiredInputs) {
+                    const exists = (launchJson.inputs as { id?: string }[]).some(i => i.id === input.id);
+                    if (!exists) {
+                        (launchJson.inputs as unknown[]).push(input);
+                    }
+                }
+            } else {
+                // Create new launch.json
+                launchJson = {
+                    version: "0.2.0",
+                    configurations: [tunitConfig],
+                    inputs: requiredInputs
+                };
+            }
+
+            // Write the updated launch.json
+            fs.writeFileSync(launchJsonPath, JSON.stringify(launchJson, null, 2));
+
+            // Open the file
+            const doc = await vscode.workspace.openTextDocument(launchJsonPath);
+            await vscode.window.showTextDocument(doc);
+
+            vscode.window.showInformationMessage('Debug TUnit Test configuration added to launch.json');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to generate debug configuration: ${error}`);
+        }
+    });
+
+    context.subscriptions.push(showTestScope, copyTestFilter, getTestFilterForInput, getFilter, getClassName, getMethodName, getDllPath, generateDebugConfig);
 }
 
 async function getTestScope(showMessages: boolean = true): Promise<TestScopeInfo | undefined> {
@@ -556,40 +641,6 @@ function findMethodName(lines: string[], currentLine: number): string | undefine
     }
     
     return inMethod ? foundMethod : undefined;
-}
-
-/**
- * Debug Configuration Provider for TUnit tests
- * Provides initial debug configurations when users create launch.json or add configurations
- */
-class TUnitDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
-
-    /**
-     * Provide initial debug configurations for a new launch.json
-     */
-    provideDebugConfigurations(_folder: vscode.WorkspaceFolder | undefined): vscode.ProviderResult<vscode.DebugConfiguration[]> {
-        return [this.createTUnitDebugConfig()];
-    }
-
-    /**
-     * Create the TUnit debug configuration
-     */
-    private createTUnitDebugConfig(): vscode.DebugConfiguration {
-        return {
-            name: "Debug TUnit Test",
-            type: "coreclr",
-            request: "launch",
-            preLaunchTask: "build",
-            program: "${command:csharp-test-filter.getDllPath}",
-            args: [
-                "--treenode-filter",
-                "${command:csharp-test-filter.getFilter}"
-            ],
-            cwd: "${workspaceFolder}",
-            console: "integratedTerminal",
-            stopAtEntry: false
-        };
-    }
 }
 
 /**
